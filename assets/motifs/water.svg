@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+ <defs>
+  <linearGradient id="waterBody" x1="88" y1="249" x2="414" y2="405" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#e5eee0"/><stop offset=".5" stop-color="#a9c7bc"/><stop offset="1" stop-color="#719c98"/>
+  </linearGradient>
+  <linearGradient id="waterLine" x1="78" y1="247" x2="434" y2="360" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#a77e53"/><stop offset=".45" stop-color="#557e79"/><stop offset="1" stop-color="#345d58"/>
+  </linearGradient>
+ </defs>
+ <g stroke-linecap="round" stroke-linejoin="round">
+  <!-- 连续水带以卷涡和层叠波峰组成，适合沿伞面环带排布。 -->
+  <path d="M43 344c27-50 67-73 118-67 35 4 58 25 77 56 20-37 51-58 92-58 49 0 85 28 111 75 10-27 25-47 43-61v124H43z" fill="url(#waterBody)" stroke="#527b77" stroke-width="7"/>
+  <path d="M46 344c40-35 78-42 114-22 19 11 31 26 43 46 23-34 49-52 83-52 38 0 66 20 91 58 14-27 32-45 56-52 18-5 37-1 55 9" stroke="url(#waterLine)" stroke-width="6"/>
+  <path d="M61 374c36-21 67-23 93-7 16 10 27 24 39 42 25-27 52-40 82-40 34 0 61 15 87 45 18-24 39-37 63-38 20-1 40 7 60 23" stroke="#f7f1df" stroke-width="4" opacity=".86"/>
+  <path d="M83 318c-16-22-10-48 12-57 20-8 41 4 43 24 2 16-9 28-24 29-12 1-21-8-20-19 1-8 7-13 15-13m115 99c-14-27-7-55 17-66 21-10 46 3 47 26 1 17-12 29-28 28-12-1-20-10-17-21 2-8 9-12 17-10m111-3c-10-20-4-40 13-49 17-9 37 0 40 17 3 13-6 23-18 23-9 0-15-7-13-15 1-6 6-9 12-8" stroke="#4d7772" stroke-width="5"/>
+  <path d="M59 414c34-9 63-8 90 4m30 8c38-9 71-8 101 5m28 0c34-10 67-10 98 1m30 0c22-5 44-4 67 4" stroke="#b49163" stroke-width="3.5" opacity=".85"/>
+  <path d="M139 284c9 12 17 24 23 39m148-48c10 13 17 27 21 43m103-5c6 8 11 17 15 26" stroke="#f9f3e4" stroke-width="3" opacity=".82"/>
+ </g>
+</svg>

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#263f3a">
+  <meta name="description" content="伞下江南 · 西湖绸伞数字共创。">
+  <title>伞下江南 | Jiangnan Beneath the Umbrella</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">☂</span>
+        <div>
+          <h1>伞下江南</h1>
+          <p>JIANGNAN BENEATH THE UMBRELLA</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <input id="designName" class="design-name" type="text" maxlength="20" value="苏堤春晓" aria-label="作品名称">
+        <button class="button btn-accent" id="randomBtn" type="button">灵感</button>
+        <button class="button btn-secondary" id="templateBtn" type="button">示例</button>
+        <button class="button btn-secondary" id="clearBtn" type="button">空白</button>
+        <button class="button btn-primary" id="saveBtn" type="button">保存</button>
+        <button class="button btn-share" id="shareBtn" type="button">分享</button>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <section class="canvas-container" aria-label="绸伞创作画布">
+        <canvas id="umbrellaCanvas" width="720" height="720" aria-label="西湖绸伞绘制画布"></canvas>
+        <div class="three-viewer" id="threeViewer" hidden aria-label="西湖绸伞三维预览">
+          <div class="viewer-toolbar">
+            <button class="viewer-button" id="importModelBtn" type="button">导入 Blender GLB</button>
+            <button class="viewer-button" id="resetModelBtn" type="button" hidden>恢复程序伞</button>
+            <input id="umbrellaModelInput" type="file" accept=".glb,model/gltf-binary" hidden>
+          </div>
+          <div class="three-host" id="threeHost"></div>
+          <p class="viewer-hint">拖动旋转 · 双指或滚轮缩放</p>
+          <p class="viewer-error" id="threeError" hidden></p>
+        </div>
+        <div class="canvas-status" aria-live="polite">
+          <div class="status-info">
+            <span id="patternReadout">西湖荷花</span>
+            <span class="status-divider"></span>
+            <span><b id="segmentReadout">8</b> 重纹</span>
+            <span class="status-hint">在伞面上拖动画笔</span>
+          </div>
+          <div class="view-switch" role="group" aria-label="预览模式">
+            <button type="button" class="view-button is-active" data-view-mode="2d" aria-pressed="true">2D 绘制</button>
+            <button type="button" class="view-button" data-view-mode="3d" aria-pressed="false">3D 赏伞</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="controls" aria-label="创作工具">
+        <section class="control-group mode-group">
+          <div class="mode-switch" role="group" aria-label="创作模式">
+            <button type="button" class="mode-button is-active" id="brushModeBtn" data-mode="brush">自由绘画</button>
+            <button type="button" class="mode-button" id="patternModeBtn" data-mode="pattern">纹样装饰</button>
+          </div>
+          <div class="mode-utilities">
+            <button type="button" class="utility-button" id="undoBtn" aria-label="撤销">↶</button>
+            <button type="button" class="utility-button" id="redoBtn" aria-label="重做">↷</button>
+            <button type="button" class="utility-button" id="guideToggle" aria-pressed="false">构图辅助</button>
+            <label class="check-row snap-control" for="zoneSnap"><input type="checkbox" id="zoneSnap" checked><span>区域吸附</span></label>
+          </div>
+        </section>
+
+        <section class="control-group brush-group" id="brushTools">
+          <h2>笔刷</h2>
+          <div class="brush-style-row" role="group" aria-label="笔触风格">
+            <button type="button" class="style-chip is-active" data-brush-style="soft">柔墨</button>
+            <button type="button" class="style-chip" data-brush-style="texture">纤维笔</button>
+            <button type="button" class="style-chip" data-brush-style="clean">清晰</button>
+          </div>
+          <div class="swatch-row" role="group" aria-label="笔触颜色">
+            <input type="color" id="colorPicker" value="#b96e68" aria-label="自选笔触颜色">
+            <button type="button" class="color-swatch is-active" data-brush-color="#b96e68" style="--swatch:#b96e68" aria-label="荷花红"></button>
+            <button type="button" class="color-swatch" data-brush-color="#537c7e" style="--swatch:#537c7e" aria-label="西湖青"></button>
+            <button type="button" class="color-swatch" data-brush-color="#bfa37a" style="--swatch:#bfa37a" aria-label="竹骨金"></button>
+            <button type="button" class="color-swatch" data-brush-color="#263f3a" style="--swatch:#263f3a" aria-label="黛青"></button>
+            <button type="button" class="color-swatch" data-brush-color="#f1eee5" style="--swatch:#f1eee5" aria-label="绸缎米白"></button>
+          </div>
+          <div class="control-item">
+            <label for="brushSize">大小</label>
+            <input type="range" id="brushSize" min="4" max="28" step="1" value="8">
+            <output class="value-display" id="brushSizeValue">8</output>
+          </div>
+          <div class="control-item">
+            <label for="opacity">浓淡</label>
+            <input type="range" id="opacity" min="10" max="100" step="1" value="45">
+            <output class="value-display" id="opacityValue">45%</output>
+          </div>
+        </section>
+
+        <section class="control-group symmetry-group">
+          <div class="group-title-row">
+            <h2>放射</h2>
+            <output class="segment-value" id="segmentsValue">8</output>
+          </div>
+          <div class="segment-slider">
+            <input type="range" id="segments" min="1" max="14" step="1" value="8" aria-label="放射重复数量">
+            <div class="range-ticks" id="segmentTicks" role="group" aria-label="放射数量选项"></div>
+          </div>
+          <div class="control-item compact-item">
+            <label class="check-row" for="mirror"><input type="checkbox" id="mirror" checked><span>镜像</span></label>
+            <label class="check-row" for="animate"><input type="checkbox" id="animate"><span>旋转</span></label>
+          </div>
+        </section>
+
+        <section class="control-group pattern-group">
+          <div class="group-title-row">
+            <h2>纹样</h2>
+            <div class="carousel-arrows">
+              <button type="button" class="carousel-arrow" data-carousel="prev" aria-label="向左浏览纹样">‹</button>
+              <button type="button" class="carousel-arrow" data-carousel="next" aria-label="向右浏览纹样">›</button>
+            </div>
+          </div>
+          <div class="pattern-carousel" id="patternCarousel" role="listbox" aria-label="选择纹样">
+            <button type="button" class="pattern-card is-active" data-pattern="lotus" role="option" aria-selected="true">
+              <span class="pattern-image"><img src="assets/motifs/lotus.png" alt=""></span><span class="pattern-name">西湖荷花</span>
+            </button>
+            <button type="button" class="pattern-card" data-pattern="westLake" role="option" aria-selected="false">
+              <span class="pattern-image"><img src="assets/motifs/west-lake.png" alt=""></span><span class="pattern-name">雷峰湖山</span>
+            </button>
+            <button type="button" class="pattern-card" data-pattern="koi" role="option" aria-selected="false">
+              <span class="pattern-image"><img src="assets/motifs/koi.png" alt=""></span><span class="pattern-name">锦鲤戏水</span>
+            </button>
+            <button type="button" class="pattern-card" data-pattern="bamboo" role="option" aria-selected="false">
+              <span class="pattern-image"><img src="assets/motifs/bamboo.png" alt=""></span><span class="pattern-name">风竹</span>
+            </button>
+            <button type="button" class="pattern-card" data-pattern="cloud" role="option" aria-selected="false">
+              <span class="pattern-image"><img src="assets/motifs/cloud.png" alt=""></span><span class="pattern-name">如意云纹</span>
+            </button>
+            <button type="button" class="pattern-card" data-pattern="water" role="option" aria-selected="false">
+              <span class="pattern-image"><img src="assets/motifs/water.svg" alt=""></span><span class="pattern-name">西湖水纹</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="control-group pattern-edit-group" id="patternTools" hidden>
+          <div class="group-title-row"><h2>纹样编辑</h2><button type="button" class="text-button" id="deletePatternBtn">删除选中</button></div>
+          <div class="pattern-edit-actions"><button type="button" class="button btn-primary repeat-button" id="repeatBtn">环形重复</button><span class="zone-note" id="selectedZone">伞面区域</span></div>
+          <div class="control-item"><label for="repeatCount">重复数</label><input type="range" id="repeatCount" min="2" max="16" step="1" value="8"><output class="value-display" id="repeatCountValue">8</output></div>
+          <div class="control-item"><label for="repeatRadius">排列半径</label><input type="range" id="repeatRadius" min="0" max="238" step="1" value="95"><output class="value-display" id="repeatRadiusValue">95px</output></div>
+          <div class="control-item"><label for="patternScale">整体大小</label><input type="range" id="patternScale" min="0.06" max="1.6" step="0.01" value="1"><output class="value-display" id="patternScaleValue">100%</output></div>
+          <div class="control-item"><label for="patternRotation">旋转角度</label><input type="range" id="patternRotation" min="-180" max="180" step="1" value="0"><output class="value-display" id="patternRotationValue">0°</output></div>
+          <div class="orientation-row" role="group" aria-label="环形纹样朝向">
+            <button type="button" class="style-chip" data-orientation="tangent">切线</button>
+            <button type="button" class="style-chip" data-orientation="radial">径向</button>
+            <button type="button" class="style-chip is-active" data-orientation="original">原朝向</button>
+          </div>
+        </section>
+
+        <section class="control-group fabric-group">
+          <h2>伞面</h2>
+          <div class="fabric-settings">
+            <div class="swatch-row fabric-swatches" role="group" aria-label="伞面颜色">
+              <button type="button" class="fabric-swatch is-active" data-fabric-color="#f1eee5" style="--swatch:#f1eee5" aria-label="绸缎米白"></button>
+              <button type="button" class="fabric-swatch" data-fabric-color="#d5e5dd" style="--swatch:#d5e5dd" aria-label="淡湖青"></button>
+              <button type="button" class="fabric-swatch" data-fabric-color="#537c7e" style="--swatch:#537c7e" aria-label="西湖青"></button>
+              <button type="button" class="fabric-swatch" data-fabric-color="#d7b0a4" style="--swatch:#d7b0a4" aria-label="荷花粉"></button>
+            </div>
+            <div class="fabric-style" role="group" aria-label="织物质感">
+              <button type="button" class="style-chip is-active" data-fabric-style="silk">素绸</button>
+              <button type="button" class="style-chip" data-fabric-style="gauze">轻纱</button>
+              <button type="button" class="style-chip" data-fabric-style="indigo">蓝印</button>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="modal" id="shareOverlay" hidden>
+    <section class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+      <button class="modal-close" id="closeShareBtn" type="button" aria-label="关闭">×</button>
+      <div class="share-heading">
+        <h2 id="shareTitle">伞下江南</h2>
+        <p>JIANGNAN BENEATH THE UMBRELLA</p>
+      </div>
+      <div class="poster-stage"><img id="posterPreview" alt="我的江南伞作品海报"></div>
+      <div class="share-actions">
+        <button class="button btn-secondary" id="downloadPosterBtn" type="button">保存海报</button>
+        <button class="button btn-primary" id="sharePosterBtn" type="button">分享作品</button>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

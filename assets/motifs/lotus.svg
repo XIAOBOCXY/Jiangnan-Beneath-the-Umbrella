@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+ <defs>
+  <linearGradient id="petalOuter" x1="176" y1="132" x2="296" y2="340" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#f6d3c2"/><stop offset=".52" stop-color="#d99391"/><stop offset="1" stop-color="#b96e68"/>
+  </linearGradient>
+  <linearGradient id="petalInner" x1="225" y1="183" x2="285" y2="316" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#fff0dc"/><stop offset=".55" stop-color="#edb4a5"/><stop offset="1" stop-color="#cf8581"/>
+  </linearGradient>
+  <linearGradient id="leaf" x1="113" y1="362" x2="395" y2="458" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#b4c9ac"/><stop offset=".5" stop-color="#729889"/><stop offset="1" stop-color="#527b77"/>
+  </linearGradient>
+ </defs>
+ <g stroke-linecap="round" stroke-linejoin="round">
+  <!-- 莲叶与水线作为底层，保留明显的留白和笔意。 -->
+  <path d="M255 402c-57-42-123-53-185-31 27 49 83 76 157 68-56 18-91 43-108 72 57 1 109-18 145-54 36 36 88 55 145 54-17-29-52-54-108-72 74 8 130-19 157-68-62-22-128-11-185 31" fill="url(#leaf)" stroke="#456f69" stroke-width="6"/>
+  <path d="M256 431c-49-31-102-47-160-51m160 51c48-30 101-46 159-51m-159 51c-20-21-43-38-73-51m73 51c20-21 43-38 73-51" stroke="#dce6cf" stroke-width="3" opacity=".8"/>
+  <path d="M108 467c39 17 78 25 118 25m168-25c-39 17-78 25-118 25" stroke="#b49468" stroke-width="3" opacity=".8"/>
+
+  <!-- 外层花瓣采用渐层与细脉线，内层以藕粉提亮。 -->
+  <path d="M256 292c-41-44-72-98-63-159 39 19 64 55 63 106 5-66 31-113 77-143 17 54 6 106-33 155 38-44 84-62 145-54-29 49-71 78-128 84 53-3 99 18 137 64-53 19-103 14-149-17 45 36 66 81 62 137-51-23-85-61-104-116-19 55-53 93-104 116-4-56 17-101 62-137-46 31-96 36-149 17 38-46 84-67 137-64-57-6-99-35-128-84 61-8 107 10 145 54-39-49-50-101-33-155 46 30 72 77 77 143-1-51 24-87 63-106 9 61-22 115-63 159z" fill="url(#petalOuter)" stroke="#965f5d" stroke-width="6"/>
+  <path d="M256 288c-24-31-43-71-40-112 23 20 39 48 40 81 4-49 23-82 51-103 8 39-1 77-25 111 30-28 64-40 102-34-21 32-49 52-89 58 39-1 70 13 99 42-36 13-69 9-101-11 32 26 47 57 44 97-37-17-62-45-76-85-14 40-39 68-76 85-3-40 12-71 44-97-32 20-65 24-101 11 29-29 60-43 99-42-40-6-68-26-89-58 38-6 72 6 102 34-24-34-33-72-25-111 28 21 47 54 51 103 1-33 17-61 40-81 3 41-16 81-40 112z" fill="url(#petalInner)" stroke="#b56e6c" stroke-width="4"/>
+  <path d="M256 151c-5 44-5 91 0 137m-44-92c18 19 31 41 40 67m47-67c-18 19-31 41-40 67m-92-28c32 9 59 25 82 48m119-48c-32 9-59 25-82 48m-112 22c35-4 67 2 99 20m105-20c-35-4-67 2-99 20" stroke="#a96365" stroke-width="3" opacity=".72"/>
+
+  <!-- 莲蓬与花蕊作小面积竹金点色。 -->
+  <path d="M224 276c4-20 16-34 32-34s28 14 32 34l-8 21h-48z" fill="#d9b575" stroke="#95754d" stroke-width="4"/>
+  <path d="M231 279c16-8 34-8 50 0m-45 10c13-5 27-5 40 0" stroke="#f7e5b7" stroke-width="2.5"/>
+  <g fill="#7b6040" stroke="none">
+   <circle cx="239" cy="269" r="2.6"/><circle cx="250" cy="265" r="2.6"/><circle cx="262" cy="265" r="2.6"/><circle cx="273" cy="269" r="2.6"/>
+  </g>
+  <path d="M84 473c47 19 97 27 150 23m194-23c-47 19-97 27-150 23" stroke="#91aaa0" stroke-width="3.5"/>
+ </g>
+</svg>
