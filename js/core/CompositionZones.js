@@ -1,9 +1,10 @@
 // 交互构图分区用于辅助创作，不代表西湖绸伞传统工艺尺寸规范。
 const ZONES = [
-  { name: "伞心", min: 0, max: .18, maxMotif: 68 },
-  { name: "中部", min: .22, max: .58, maxMotif: 48 },
-  { name: "外圈", min: .68, max: .82, maxMotif: 24 },
-  { name: "伞缘", min: .82, max: 1, maxMotif: 14 }
+  // 分区只限制单个纹样的最大绘制尺寸，不要求纹样完全留在分区环带内。
+  { name: "伞心", min: 0, max: .18, maxMotif: 420 },
+  { name: "中部", min: .22, max: .58, maxMotif: 210 },
+  { name: "外圈", min: .68, max: .82, maxMotif: 92 },
+  { name: "伞缘", min: .82, max: 1, maxMotif: 48 }
 ];
 
 export class CompositionZones {

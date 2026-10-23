@@ -11,9 +11,9 @@ export class MandalaRenderer {
     this.patternDrawer = patternDrawer;
     this.document = new ArtworkDocument();
     this.zones = new CompositionZones(canvasManager.center, canvasManager.radius);
-    this.rotationAngle = 0;
     this.showGuides = false;
     this.reveal = new Map();
+    this.inkWash = null;
     this.dirty = { strokes: true, patterns: true };
     this.render();
   }
@@ -22,9 +22,25 @@ export class MandalaRenderer {
 
   beginStroke(point, settings) {
     this.document.commit();
-    this.document.strokes.push({ id: uid(), points: [{ ...point, pressure: settings.pressureFactor || 1 }], settings: { ...settings } });
+    const stroke = { id: uid(), points: [{ ...point, pressure: settings.pressureFactor || 1 }], settings: { ...settings } };
+    if (settings.brushStyle === "fluid") stroke.fluidSplats = [];
+    this.document.strokes.push(stroke);
     this.dirty.strokes = true;
-    this.render();
+    this.render({ markTexture: settings.brushStyle !== "fluid" });
+    return stroke;
+  }
+
+  appendFluidSplats(strokeId, splats) {
+    const stroke = this.document.strokes.find((item) => item.id === strokeId);
+    if (!stroke || stroke.settings.brushStyle !== "fluid") return;
+    stroke.fluidSplats ||= [];
+    stroke.fluidSplats.push(...splats.map((splat) => ({
+      uv: { x: splat.uv.x, y: splat.uv.y },
+      force: { x: splat.force.x, y: splat.force.y },
+      color: splat.color,
+      radius: splat.radius,
+      opacity: splat.opacity
+    })));
   }
 
   extendStroke(point, settings = {}) {
@@ -34,27 +50,72 @@ export class MandalaRenderer {
     if (Math.hypot(point.x - previous.x, point.y - previous.y) < .8) return;
     stroke.points.push({ ...point, pressure: settings.pressureFactor || 1 });
     this.dirty.strokes = true;
-    this.render();
+    this.render({ markTexture: stroke.settings.brushStyle !== "fluid" });
   }
 
-  endStroke() { this.render(); }
+  endStroke() {
+    const stroke = this.document.strokes[this.document.strokes.length - 1];
+    if (stroke?.settings.brushStyle !== "fluid") {
+      if (stroke) this.animateInkWash(stroke.id);
+      this.render();
+      return;
+    }
+    this.render({ markTexture: false });
+  }
+
+  animateInkWash(strokeId) {
+    const wash = { strokeId, startedAt: performance.now(), duration: 620, lastFrame: 0 };
+    this.inkWash = wash;
+    const frame = (now) => {
+      if (this.inkWash !== wash) return;
+      if (now - wash.lastFrame >= 1000 / 30 || now - wash.startedAt >= wash.duration) {
+        wash.lastFrame = now;
+        this.dirty.strokes = true;
+        this.render();
+      }
+      if (now - wash.startedAt < wash.duration) requestAnimationFrame(frame);
+      else {
+        this.inkWash = null;
+        this.dirty.strokes = true;
+        this.render();
+      }
+    };
+    requestAnimationFrame(frame);
+  }
 
   addPattern(patternId, point, settings = {}) {
-    const zone = this.zones.getZone(point);
-    const position = settings.snap ? this.zones.snap(point, zone) : point;
-    const baseSize = 68;
+    const asset = this.patternDrawer.getAsset(patternId);
+    if (!asset) return null;
+
+    const detectedZone = this.zones.getZone(point);
+    const allowedZones = asset.applicableZones?.length ? asset.applicableZones : [detectedZone.name];
+    const pointRatio = Math.hypot(point.x - this.zones.center.x, point.y - this.zones.center.y) / this.zones.radius;
+    const zone = allowedZones.includes(detectedZone.name)
+      ? detectedZone
+      : allowedZones
+        .map((name) => this.zones.getByName(name))
+        .reduce((closest, candidate) => {
+          const candidateMiddle = (candidate.min + candidate.max) / 2;
+          const closestMiddle = (closest.min + closest.max) / 2;
+          return Math.abs(candidateMiddle - pointRatio) < Math.abs(closestMiddle - pointRatio) ? candidate : closest;
+        });
+    // 若素材不适用于点击区域，则自动移入最近的适用带；开启吸附时仍按原有规则定位。
+    const position = settings.snap || zone.name !== detectedZone.name ? this.zones.snap(point, zone) : point;
+    const baseSize = asset.recommendedSize;
     const scale = this.zones.limitScale(1, zone, baseSize);
     this.document.commit();
     const object = {
       id: uid(), patternId, x: position.x, y: position.y,
-      scale, rotation: 0, repeatCount: 1, repeatRadius: 0,
+      scale, rotation: 0, repeatCount: asset.defaultRepeatCount, repeatRadius: 0,
       repeatMode: "single", repeatAngle: 0, repeatOrientation: "original",
       opacity: .94, zone: zone.name, baseSize
     };
+    this.constrainSingleObject(object, position);
     this.document.patterns.push(object);
     this.document.selectedId = object.id;
     this.dirty.patterns = true;
     this.render();
+    this.animateReveal(object.id, "bloom");
     return object;
   }
 
@@ -90,7 +151,49 @@ export class MandalaRenderer {
     const dy = point.y - instance.y;
     const localX = dx * Math.cos(angle) + dy * Math.sin(angle);
     const localY = -dx * Math.sin(angle) + dy * Math.cos(angle);
-    return Math.abs(localX) <= width * .58 && Math.abs(localY) <= height * .58;
+    return Math.abs(localX) <= width * .5 + 4 && Math.abs(localY) <= height * .5 + 4;
+  }
+
+  getPatternDimensions(object, scale = object.scale) {
+    const image = this.patternDrawer.getImage(object.patternId);
+    const ratio = image?.naturalWidth && image?.naturalHeight ? image.naturalWidth / image.naturalHeight : 1;
+    const size = object.baseSize * scale;
+    return { width: ratio >= 1 ? size : size * ratio, height: ratio >= 1 ? size / ratio : size };
+  }
+
+  getHalfDiagonal(object, scale = object.scale, padding = 4) {
+    const { width, height } = this.getPatternDimensions(object, scale);
+    return Math.hypot(width, height) * .5 + padding;
+  }
+
+  getMaxCenterDistance(object, direction, boundary = this.canvasManager.radius - 2) {
+    const { width, height } = this.getPatternDimensions(object);
+    const cos = Math.cos(object.rotation || 0), sin = Math.sin(object.rotation || 0);
+    const rayX = Math.cos(direction), rayY = Math.sin(direction);
+    let limit = boundary;
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+      const localX = sx * (width * .5 + 4), localY = sy * (height * .5 + 4);
+      const cornerX = localX * cos - localY * sin;
+      const cornerY = localX * sin + localY * cos;
+      const projection = rayX * cornerX + rayY * cornerY;
+      const perpendicularSquared = Math.max(0, cornerX * cornerX + cornerY * cornerY - projection * projection);
+      if (perpendicularSquared >= boundary * boundary) return 0;
+      limit = Math.min(limit, -projection + Math.sqrt(boundary * boundary - perpendicularSquared));
+    }
+    return Math.max(0, limit);
+  }
+
+  constrainSingleObject(object, requestedPoint) {
+    const center = this.canvasManager.center;
+    const dx = requestedPoint.x - center.x, dy = requestedPoint.y - center.y;
+    const direction = Math.atan2(dy, dx);
+    const zone = this.zones.getByName(object.zone);
+    const zoneMin = object.zone === "伞心" ? 0 : zone.min * this.canvasManager.radius;
+    const zoneMax = Math.min(zone.max * this.canvasManager.radius, this.getMaxCenterDistance(object, direction));
+    const min = Math.min(zoneMin, zoneMax);
+    const distance = Math.max(min, Math.min(zoneMax, Math.hypot(dx, dy)));
+    object.x = center.x + Math.cos(direction) * distance;
+    object.y = center.y + Math.sin(direction) * distance;
   }
 
   getInstances(object, countOverride = null) {
@@ -103,9 +206,10 @@ export class MandalaRenderer {
       const angle = -Math.PI / 2 + object.repeatAngle + index * Math.PI * 2 / object.repeatCount;
       const x = center.x + object.x + Math.cos(angle) * object.repeatRadius;
       const y = center.y + object.y + Math.sin(angle) * object.repeatRadius;
+      // Canvas 旋转角度以竖直向上为 0；将素材自身长轴对齐到径向或切线。
       let direction = object.rotation;
-      if (object.repeatOrientation === "radial") direction += angle;
-      if (object.repeatOrientation === "tangent") direction += angle + Math.PI / 2;
+      if (object.repeatOrientation === "radial") direction += angle + Math.PI / 2;
+      if (object.repeatOrientation === "tangent") direction += angle + Math.PI;
       return { x, y, rotation: direction, index };
     });
   }
@@ -116,11 +220,8 @@ export class MandalaRenderer {
     const zone = this.zones.getByName(object.zone);
     if (object.repeatMode === "radial") {
       object.x += dx; object.y += dy;
-      const pad = object.baseSize * object.scale / 2 + 3;
-      const available = Math.max(0, Math.min(
-        object.repeatRadius - zone.min * this.canvasManager.radius - pad,
-        zone.max * this.canvasManager.radius - object.repeatRadius - pad
-      ));
+      const pad = this.getHalfDiagonal(object, object.scale, 4);
+      const available = Math.max(0, this.canvasManager.radius - object.repeatRadius - pad);
       const offset = Math.hypot(object.x, object.y);
       if (offset > available && offset > 0) { object.x *= available / offset; object.y *= available / offset; }
     } else {
@@ -128,9 +229,9 @@ export class MandalaRenderer {
       const center = this.canvasManager.center;
       let angle = Math.atan2(object.y - center.y, object.x - center.x);
       let distance = Math.hypot(object.x - center.x, object.y - center.y);
-      const pad = object.baseSize * object.scale / 2 + 3;
-      const min = zone.min === 0 ? 0 : zone.min * this.canvasManager.radius + pad;
-      const max = Math.max(min, zone.max * this.canvasManager.radius - pad);
+      // 按旋转后四角限制位置，选择框和透明素材不会越过伞缘。
+      const max = Math.min(zone.max * this.canvasManager.radius, this.getMaxCenterDistance(object, angle));
+      const min = Math.min(zone.min === 0 ? 0 : zone.min * this.canvasManager.radius, max);
       distance = Math.max(min, Math.min(max, distance));
       object.x = center.x + Math.cos(angle) * distance;
       object.y = center.y + Math.sin(angle) * distance;
@@ -165,15 +266,57 @@ export class MandalaRenderer {
     object.repeatCount = requestedCount;
     this.constrainGroupSize(object);
     this.dirty.patterns = true;
-    this.animateReveal(object.id);
+    this.animateReveal(object.id, "ring");
     this.render();
     return true;
   }
 
-  animateReveal(id) {
+  getMaxMotifSize(object) {
+    const zone = this.zones.getByName(object.zone);
+    let maxSize = zone.maxMotif;
+    if (object.repeatMode === "radial" && object.repeatCount > 1 && object.repeatRadius > 0) {
+      const chord = 2 * object.repeatRadius * Math.sin(Math.PI / object.repeatCount) * .84;
+      const image = this.patternDrawer.getImage(object.patternId);
+      const ratio = image?.naturalWidth && image?.naturalHeight ? image.naturalWidth / image.naturalHeight : 1;
+      const unitWidth = ratio >= 1 ? 1 : ratio;
+      const unitHeight = ratio >= 1 ? 1 / ratio : 1;
+      const angles = Array.from({ length: object.repeatCount }, (_, index) => -Math.PI / 2 + object.repeatAngle + index * Math.PI * 2 / object.repeatCount);
+      const tangentFactor = Math.max(...angles.map((angle) => {
+        let rotation = object.rotation || 0;
+        if (object.repeatOrientation === "radial") rotation += angle + Math.PI / 2;
+        else if (object.repeatOrientation === "tangent") rotation += angle + Math.PI;
+        const tangentAngle = angle + Math.PI / 2;
+        return Math.abs(Math.cos(rotation - tangentAngle)) * unitWidth + Math.abs(Math.sin(rotation - tangentAngle)) * unitHeight;
+      }));
+      maxSize = Math.min(maxSize, chord / Math.max(.1, tangentFactor));
+      const radialRoom = Math.max(0, Math.min(
+        this.canvasManager.radius - object.repeatRadius,
+        zone.max * this.canvasManager.radius - object.repeatRadius
+      ));
+      const radialFactor = Math.max(...angles.map((angle) => {
+        let rotation = object.rotation || 0;
+        if (object.repeatOrientation === "radial") rotation += angle + Math.PI / 2;
+        else if (object.repeatOrientation === "tangent") rotation += angle + Math.PI;
+        return Math.abs(Math.cos(rotation - angle)) * unitWidth + Math.abs(Math.sin(rotation - angle)) * unitHeight;
+      }));
+      if (radialRoom > 0) maxSize = Math.min(maxSize, radialRoom * 2 / Math.max(.1, radialFactor));
+    }
+    return maxSize;
+  }
+
+  getMaxScale(object) {
+    return Math.max(.06, Math.min(3, this.getMaxMotifSize(object) / Math.max(1, object.baseSize)));
+  }
+
+  animateReveal(id, kind = "ring") {
     const object = this.document.patterns.find((item) => item.id === id);
     if (!object) return;
-    const state = { startedAt: performance.now(), lastFrame: 0, stagger: 74, fade: 210, target: object.repeatCount };
+    const state = {
+      kind, startedAt: performance.now(), lastFrame: 0,
+      stagger: kind === "bloom" ? 0 : 74,
+      fade: kind === "bloom" ? 520 : 210,
+      target: kind === "bloom" ? 1 : object.repeatCount
+    };
     this.reveal.set(id, state);
     const next = () => {
       if (this.reveal.get(id) !== state) return;
@@ -201,7 +344,7 @@ export class MandalaRenderer {
     if (record) this.document.commit();
     if (property === "repeatCount") object.repeatCount = Math.max(2, number);
     else if (property === "repeatRadius") object.repeatRadius = this.zones.clampOrbit(number, object.zone);
-    else if (property === "scale") object.scale = this.zones.limitScale(number, this.zones.getByName(object.zone), object.baseSize);
+    else if (property === "scale") object.scale = Math.max(.06, Math.min(number, this.getMaxScale(object)));
     else if (property === "rotation") object.rotation = number * Math.PI / 180;
     else if (property === "repeatOrientation") object.repeatOrientation = value;
     if (property === "repeatCount") this.reveal.delete(object.id);
@@ -211,13 +354,13 @@ export class MandalaRenderer {
   }
 
   constrainGroupSize(object) {
-    const zone = this.zones.getByName(object.zone);
-    let maxSize = zone.maxMotif;
-    if (object.repeatCount > 1 && object.repeatRadius > 0) {
-      const chord = 2 * object.repeatRadius * Math.sin(Math.PI / object.repeatCount);
-      maxSize = Math.min(maxSize, chord * .72);
-    }
+    const maxSize = this.getMaxMotifSize(object);
     object.scale = Math.max(.06, Math.min(object.scale, maxSize / Math.max(1, object.baseSize)));
+    if (object.repeatMode === "radial") {
+      const available = Math.max(0, this.canvasManager.radius - object.repeatRadius - this.getHalfDiagonal(object, object.scale, 4));
+      const offset = Math.hypot(object.x, object.y);
+      if (offset > available && offset > 0) { object.x *= available / offset; object.y *= available / offset; }
+    }
   }
 
   deleteSelected() {
@@ -300,18 +443,33 @@ export class MandalaRenderer {
 
   drawStroke(ctx, stroke) {
     const center = this.canvasManager.center;
-    const settings = stroke.settings;
+    const sourceSettings = stroke.settings;
+    // Fluid strokes remain GPU pigment on the canopy; Canvas stores only their
+    // editable source data for history and replay, never draws a second line.
+    if (sourceSettings.brushStyle === "fluid") return;
+    const settings = sourceSettings;
     const count = Math.max(1, Number(settings.segments) || 8);
     const mirrorCount = settings.mirror ? 2 : 1;
+    const wash = this.inkWash?.strokeId === stroke.id ? this.inkWash : null;
+    const washProgress = wash ? Math.min(1, (performance.now() - wash.startedAt) / wash.duration) : 1;
     ctx.save();
     ctx.beginPath(); ctx.arc(center.x, center.y, this.canvasManager.radius - 1, 0, Math.PI * 2); ctx.clip();
     for (let index = 0; index < count; index += 1) {
       for (let mirror = 0; mirror < mirrorCount; mirror += 1) {
         ctx.save();
         ctx.translate(center.x, center.y);
-        ctx.rotate(index * Math.PI * 2 / count + (settings.animate ? this.rotationAngle : 0));
+        ctx.rotate(index * Math.PI * 2 / count);
         if (mirror) ctx.scale(1, -1);
         ctx.translate(-center.x, -center.y);
+        if (washProgress < 1) {
+          const washOpacity = (1 - washProgress) * .14;
+          this.drawSmoothPath(ctx, stroke.points, {
+            ...settings,
+            brushSize: settings.brushSize * 1.65,
+            opacity: settings.opacity * washOpacity,
+            brushStyle: "soft"
+          });
+        }
         this.drawSmoothPath(ctx, stroke.points, settings);
         ctx.restore();
       }
@@ -332,6 +490,22 @@ export class MandalaRenderer {
       const progress = Math.max(0, Math.min(1, (elapsed - instance.index * reveal.stagger) / reveal.fade));
       if (progress <= 0) return;
       const eased = 1 - Math.pow(1 - progress, 3);
+      if (reveal.kind === "bloom") {
+        const image = this.patternDrawer.getImage(object.patternId);
+        if (!image) return;
+        const size = object.baseSize * object.scale;
+        const ratio = image.naturalWidth / image.naturalHeight;
+        const width = ratio >= 1 ? size : size * ratio;
+        const height = ratio >= 1 ? size / ratio : size;
+        // 圆形遮罩从纹样中心向外舒展，并同步淡入，避免像图标瞬间弹出。
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(instance.x, instance.y, Math.hypot(width, height) * .5 * eased, 0, Math.PI * 2);
+        ctx.clip();
+        this.patternDrawer.drawObject(ctx, object, { ...instance, opacity: eased, scale: .94 + .06 * eased });
+        ctx.restore();
+        return;
+      }
       this.patternDrawer.drawObject(ctx, object, { ...instance, opacity: eased, scale: .92 + .08 * eased });
     });
   }
@@ -356,7 +530,7 @@ export class MandalaRenderer {
     ctx.restore();
   }
 
-  render() {
+  render({ markTexture = true } = {}) {
     const { artCtx, patternCtx, overlayCtx } = this.canvasManager;
     const artworkChanged = this.dirty.strokes || this.dirty.patterns;
     if (this.dirty.strokes) {
@@ -375,11 +549,7 @@ export class MandalaRenderer {
     if (this.showGuides) this.zones.drawGuides(overlayCtx);
     this.drawSelection(overlayCtx, this.getSelected());
     this.canvasManager.renderScene();
-    if (artworkChanged) this.canvasManager.markTextureDirty();
+    if (artworkChanged && markTexture) this.canvasManager.markTextureDirty();
   }
 
-  advanceAnimation() {
-    this.rotationAngle += .02;
-    if (this.document.strokes.some((stroke) => stroke.settings.animate)) { this.dirty.strokes = true; this.render(); }
-  }
 }

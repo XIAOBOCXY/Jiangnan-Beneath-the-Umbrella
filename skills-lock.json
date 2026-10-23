@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "three-webgl-game": {
+      "source": "openai/plugins",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "plugins/game-studio/skills/three-webgl-game/SKILL.md",
+      "computedHash": "54b1b28b30e3e40ff676aec6b5276ea9749d6828518190a8e7d79cdf3c929442"
+    },
+    "threejs-animation": {
+      "source": "iart-ai/webgl-animation-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-animation/SKILL.md",
+      "computedHash": "fc7bf12130f2996a2ab79c17b71381cc5f72581d4b46cc9663927c83b70ffe0e"
+    },
+    "web-3d-asset-pipeline": {
+      "source": "openai/plugins",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "plugins/game-studio/skills/web-3d-asset-pipeline/SKILL.md",
+      "computedHash": "2460872ff19b16dba3071eca7f8c7f798d4656b7d980f37d06f0f4c26674d0a1"
+    }
+  }
+}

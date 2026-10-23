@@ -5,7 +5,8 @@ const CENTER = SIZE / 2;
 const CANOPY_RADIUS = 246;
 const ART_RADIUS = 238;
 const TEXTURE_SIZE = 1024;
-const RIB_COUNT = 24;
+// Match the 32-bone layout used by the default Blender model and 3D preview.
+const RIB_COUNT = 32;
 const CLOTH_SOURCE = new URL("../../assets/umbrella-cloth.png", import.meta.url).href;
 const DEFAULT_SETTINGS = { fabricColor: "#f1eee5", fabricStyle: "silk" };
 
@@ -14,12 +15,17 @@ export class CanvasManager {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.dpr = 1;
+    this.viewZoom = 1;
+    this.viewRotation = 0;
+    this.viewPanX = 0;
+    this.viewPanY = 0;
     this.layers = {};
     this.textureCanvas = document.createElement("canvas");
     this.textureCanvas.width = TEXTURE_SIZE;
     this.textureCanvas.height = TEXTURE_SIZE;
     this.textureDirty = true;
     this.textureVersion = 0;
+    this.fluidSnapshotCanvas = null;
     this.lastSettings = { ...DEFAULT_SETTINGS };
     this.clothImage = { complete: false };
     this.createLayers();
@@ -66,8 +72,40 @@ export class CanvasManager {
   get radius() { return ART_RADIUS; }
 
   getPoint(event) {
-    const rect = this.canvas.getBoundingClientRect();
-    return { x: (event.clientX - rect.left) * SIZE / rect.width, y: (event.clientY - rect.top) * SIZE / rect.height };
+    const stage = this.canvas.closest(".canvas-stage");
+    const rect = stage?.getBoundingClientRect() || this.canvas.getBoundingClientRect();
+    const dx = event.clientX - (rect.left + rect.width * 0.5);
+    const dy = event.clientY - (rect.top + rect.height * 0.5);
+    // Invert the centered CSS view transform. Keeping this tied to view state
+    // ensures drawing remains registered while zoom and rotation are active.
+    const cosine = Math.cos(this.viewRotation);
+    const sine = Math.sin(this.viewRotation);
+    const translatedX = dx - this.viewPanX;
+    const translatedY = dy - this.viewPanY;
+    const localX = (cosine * translatedX + sine * translatedY) / this.viewZoom;
+    const localY = (-sine * translatedX + cosine * translatedY) / this.viewZoom;
+    // View zoom/rotation never modifies the drawing data or the 3D UV map.
+    return {
+      x: (localX / rect.width + 0.5) * SIZE,
+      y: (localY / rect.height + 0.5) * SIZE
+    };
+  }
+
+  getStageAngle(event) {
+    const stage = this.canvas.closest(".canvas-stage");
+    const rect = stage?.getBoundingClientRect() || this.canvas.getBoundingClientRect();
+    const centerX = rect.left + rect.width * 0.5 + this.viewPanX;
+    const centerY = rect.top + rect.height * 0.5 + this.viewPanY;
+    return Math.atan2(event.clientY - centerY, event.clientX - centerX);
+  }
+
+  setViewTransform(zoom = this.viewZoom, rotation = this.viewRotation, panX = this.viewPanX, panY = this.viewPanY) {
+    this.viewZoom = Math.max(0.6, Math.min(3.2, zoom));
+    this.viewRotation = rotation;
+    this.viewPanX = panX;
+    this.viewPanY = panY;
+    const viewport = document.getElementById("canvasArtworkViewport");
+    if (viewport) viewport.style.transform = `translate(${this.viewPanX}px, ${this.viewPanY}px) scale(${this.viewZoom}) rotate(${this.viewRotation}rad)`;
   }
 
   containsPoint(point) { return Math.hypot(point.x - CENTER, point.y - CENTER) <= ART_RADIUS - 2; }
@@ -330,7 +368,7 @@ export class CanvasManager {
   // 只在切换到 3D 或作品有改动后合成一次；调用方复用同一张 CanvasTexture 源。
   getUmbrellaTextureCanvas() {
     if (!this.textureDirty) return this.textureCanvas;
-    const source = this.createExportCanvas({ includeStructure: false });
+    const source = this.createExportCanvas({ includeStructure: false, includeFluid: false });
     const sourceInset = CENTER - CANOPY_RADIUS;
     const sourceDiameter = CANOPY_RADIUS * 2;
     const context = this.textureCanvas.getContext("2d");
@@ -360,7 +398,25 @@ export class CanvasManager {
       if (name === "sheenLayer") { context.globalCompositeOperation = "screen"; context.globalAlpha = .46; }
       context.drawImage(this[name], 0, 0, SIZE, SIZE); context.restore();
     });
+    if (options.includeFluid !== false && this.fluidSnapshotCanvas) {
+      context.save();
+      context.beginPath(); context.arc(CENTER, CENTER, CANOPY_RADIUS - 2, 0, Math.PI * 2); context.clip();
+      context.drawImage(this.fluidSnapshotCanvas, CENTER - CANOPY_RADIUS, CENTER - CANOPY_RADIUS, CANOPY_RADIUS * 2, CANOPY_RADIUS * 2);
+      context.restore();
+    }
     return output;
+  }
+
+  setFluidSnapshot(source) {
+    if (!source) { this.fluidSnapshotCanvas = null; return; }
+    if (!this.fluidSnapshotCanvas) {
+      this.fluidSnapshotCanvas = document.createElement("canvas");
+      this.fluidSnapshotCanvas.width = 512;
+      this.fluidSnapshotCanvas.height = 512;
+    }
+    const context = this.fluidSnapshotCanvas.getContext("2d");
+    context.clearRect(0, 0, 512, 512);
+    context.drawImage(source, 0, 0, 512, 512);
   }
 
   clearArt() { this.artCtx.clearRect(0, 0, SIZE, SIZE); this.patternCtx.clearRect(0, 0, SIZE, SIZE); this.renderScene(); }
