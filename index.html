@@ -3,20 +3,67 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#263f3a">
+  <meta name="theme-color" content="#f5f1e8">
   <meta name="description" content="伞下江南 · 西湖绸伞数字共创。">
   <title>伞下江南 | Jiangnan Beneath the Umbrella</title>
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+        "three": "./vendor/three/build/three.module.js",
+        "three/addons/": "./vendor/three/examples/jsm/"
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261023-editor-zoom">
+  <link rel="stylesheet" href="styles.css?v=20261026-ink-wash-v14">
 </head>
 <body>
+  <canvas id="inkWashBackground" class="ink-wash-background" aria-hidden="true"></canvas>
+  <div class="paper-grain" aria-hidden="true"></div>
+  <svg class="ambient-landscape" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="farLakeMountain" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#80948D" stop-opacity=".24" />
+        <stop offset="1" stop-color="#80948D" stop-opacity=".09" />
+      </linearGradient>
+      <linearGradient id="nearLakeMountain" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#777A75" stop-opacity=".18" />
+        <stop offset="1" stop-color="#80948D" stop-opacity=".06" />
+      </linearGradient>
+      <linearGradient id="lakeMist" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#F5F1E8" stop-opacity="0" />
+        <stop offset=".24" stop-color="#80948D" stop-opacity=".2" />
+        <stop offset=".72" stop-color="#F5F1E8" stop-opacity=".13" />
+        <stop offset="1" stop-color="#F5F1E8" stop-opacity="0" />
+      </linearGradient>
+      <linearGradient id="lakeRipple" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#80948D" stop-opacity="0" />
+        <stop offset=".2" stop-color="#80948D" stop-opacity=".34" />
+        <stop offset=".58" stop-color="#777A75" stop-opacity=".22" />
+        <stop offset="1" stop-color="#80948D" stop-opacity="0" />
+      </linearGradient>
+      <filter id="softLakeEdge" x="-5%" y="-20%" width="110%" height="140%">
+        <feGaussianBlur stdDeviation="3.2" />
+      </filter>
+      <filter id="softLakeMist" x="-10%" y="-60%" width="120%" height="220%">
+        <feGaussianBlur stdDeviation="20" />
+      </filter>
+    </defs>
+    <g class="landscape-far">
+      <path d="M0 444 C72 430 97 390 163 392 C224 394 244 425 301 426 C365 427 384 374 448 366 C516 358 541 407 607 416 C677 426 708 393 771 390 C836 387 862 422 922 423 C988 424 1037 373 1108 369 C1182 365 1217 414 1281 421 C1354 429 1394 391 1459 394 C1520 397 1551 428 1600 433 L1600 900 L0 900 Z" fill="url(#farLakeMountain)" filter="url(#softLakeEdge)" />
+    </g>
+    <g class="landscape-near">
+      <path d="M0 518 C79 503 121 469 199 476 C275 483 299 525 376 523 C465 521 492 463 575 460 C653 457 694 503 767 508 C854 514 899 475 980 479 C1055 482 1095 524 1177 522 C1270 520 1304 475 1383 478 C1470 480 1516 518 1600 514 L1600 900 L0 900 Z" fill="url(#nearLakeMountain)" filter="url(#softLakeEdge)" />
+    </g>
+    <g class="landscape-mist" filter="url(#softLakeMist)">
+      <path d="M-30 483 C150 446 267 462 407 480 C563 500 646 478 799 469 C958 459 1070 477 1212 486 C1376 496 1481 465 1630 462 L1630 550 C1453 550 1355 532 1195 539 C1049 545 953 522 799 530 C637 538 545 557 397 538 C245 519 139 524 -30 558 Z" fill="url(#lakeMist)" />
+    </g>
+    <g class="landscape-water">
+      <path d="M-30 594 C162 578 260 611 421 602 C591 593 697 570 864 587 C1051 606 1162 619 1331 600 C1446 587 1532 590 1630 601" fill="none" stroke="url(#lakeRipple)" stroke-width="2" />
+      <path d="M-30 630 C122 619 237 641 361 634 C532 625 640 611 805 627 C945 642 1118 651 1274 636 C1425 622 1514 624 1630 637" fill="none" stroke="url(#lakeRipple)" stroke-width="1.5" />
+      <path d="M-30 678 C147 664 254 689 411 681 C561 674 685 658 835 672 C1000 688 1152 699 1311 683 C1432 671 1522 670 1630 682" fill="none" stroke="url(#lakeRipple)" stroke-width="1.2" />
+      <path d="M-30 729 C119 719 239 741 366 733 C531 723 670 714 818 728 C970 741 1108 751 1267 740 C1419 728 1515 720 1630 734" fill="none" stroke="url(#lakeRipple)" stroke-width="1" />
+    </g>
+  </svg>
   <div class="app-shell">
     <header class="app-header">
       <div class="brand">
@@ -108,11 +155,11 @@
           <p class="brush-style-hint" id="brushStyleHint" hidden>笔迹直接生成湿墨并留在伞面；松手后继续流动、逐渐定形，可撤销。</p>
           <div class="swatch-row" role="group" aria-label="笔触颜色">
             <input type="color" id="colorPicker" value="#b96e68" aria-label="自选笔触颜色">
-            <button type="button" class="color-swatch is-active" data-brush-color="#b96e68" style="--swatch:#b96e68" aria-label="荷花红"></button>
-            <button type="button" class="color-swatch" data-brush-color="#537c7e" style="--swatch:#537c7e" aria-label="西湖青"></button>
-            <button type="button" class="color-swatch" data-brush-color="#bfa37a" style="--swatch:#bfa37a" aria-label="竹骨金"></button>
-            <button type="button" class="color-swatch" data-brush-color="#263f3a" style="--swatch:#263f3a" aria-label="黛青"></button>
-            <button type="button" class="color-swatch" data-brush-color="#f1eee5" style="--swatch:#f1eee5" aria-label="绸缎米白"></button>
+            <button type="button" class="color-swatch is-active" data-brush-color="#b96e68" style="--swatch:var(--color-lotus)" aria-label="荷花红"></button>
+            <button type="button" class="color-swatch" data-brush-color="#537c7e" style="--swatch:var(--color-lake)" aria-label="西湖青"></button>
+            <button type="button" class="color-swatch" data-brush-color="#bfa37a" style="--swatch:var(--color-bamboo)" aria-label="竹骨金"></button>
+            <button type="button" class="color-swatch" data-brush-color="#263f3a" style="--swatch:var(--color-ink)" aria-label="黛青"></button>
+            <button type="button" class="color-swatch" data-brush-color="#f1eee5" style="--swatch:var(--color-silk)" aria-label="绸缎米白"></button>
           </div>
           <div class="control-item">
             <label for="brushSize">大小</label>
@@ -170,10 +217,10 @@
           <h2>伞面</h2>
           <div class="fabric-settings">
             <div class="swatch-row fabric-swatches" role="group" aria-label="伞面颜色">
-              <button type="button" class="fabric-swatch is-active" data-fabric-color="#f1eee5" style="--swatch:#f1eee5" aria-label="绸缎米白"></button>
-              <button type="button" class="fabric-swatch" data-fabric-color="#d5e5dd" style="--swatch:#d5e5dd" aria-label="淡湖青"></button>
-              <button type="button" class="fabric-swatch" data-fabric-color="#537c7e" style="--swatch:#537c7e" aria-label="西湖青"></button>
-              <button type="button" class="fabric-swatch" data-fabric-color="#d7b0a4" style="--swatch:#d7b0a4" aria-label="荷花粉"></button>
+              <button type="button" class="fabric-swatch is-active" data-fabric-color="#f1eee5" style="--swatch:var(--color-silk)" aria-label="绸缎米白"></button>
+              <button type="button" class="fabric-swatch" data-fabric-color="#d5e5dd" style="--swatch:var(--color-mist)" aria-label="淡湖青"></button>
+              <button type="button" class="fabric-swatch" data-fabric-color="#537c7e" style="--swatch:var(--color-lake)" aria-label="西湖青"></button>
+              <button type="button" class="fabric-swatch" data-fabric-color="#d7b0a4" style="--swatch:var(--color-lotus-light)" aria-label="荷花粉"></button>
             </div>
             <div class="fabric-style" role="group" aria-label="织物质感">
               <button type="button" class="style-chip is-active" data-fabric-style="silk">素绸</button>
@@ -214,6 +261,6 @@
     </section>
   </div>
 
-  <script type="module" src="js/main.js?v=20261023-ink-fluid-v3"></script>
+  <script type="module" src="js/main.js?v=20261026-ink-wash-v11"></script>
 </body>
 </html>

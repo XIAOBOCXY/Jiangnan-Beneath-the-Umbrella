@@ -36,7 +36,10 @@ export class CanvasManager {
     this.renderBase(DEFAULT_SETTINGS);
     this.resizeObserver = new ResizeObserver(() => this.updatePixelRatio());
     this.resizeObserver.observe(canvas);
-    window.addEventListener("resize", () => this.updatePixelRatio());
+    window.addEventListener("resize", () => {
+      this.updatePixelRatio();
+      this.updateZoomLayout();
+    });
   }
 
   createLayers() {
@@ -100,12 +103,33 @@ export class CanvasManager {
   }
 
   setViewTransform(zoom = this.viewZoom, rotation = this.viewRotation, panX = this.viewPanX, panY = this.viewPanY) {
-    this.viewZoom = Math.max(0.6, Math.min(3.2, zoom));
+    // Detailed inspection extends beyond the original square editor viewport.
+    this.viewZoom = Math.max(0.6, Math.min(10, zoom));
     this.viewRotation = rotation;
     this.viewPanX = panX;
     this.viewPanY = panY;
     const viewport = document.getElementById("canvasArtworkViewport");
     if (viewport) viewport.style.transform = `translate(${this.viewPanX}px, ${this.viewPanY}px) scale(${this.viewZoom}) rotate(${this.viewRotation}rad)`;
+    this.updateZoomLayout();
+  }
+
+  updateZoomLayout() {
+    const stage = this.canvas.closest(".canvas-stage");
+    if (!stage) return;
+    if (!window.matchMedia("(max-width: 980px)").matches) {
+      stage.style.removeProperty("--zoom-reserve-top");
+      stage.style.removeProperty("--zoom-reserve-bottom");
+      return;
+    }
+
+    const rect = stage.getBoundingClientRect();
+    const verticalSpan = this.viewZoom * (
+      Math.abs(Math.cos(this.viewRotation)) * rect.height
+      + Math.abs(Math.sin(this.viewRotation)) * rect.width
+    );
+    const extra = Math.max(0, (verticalSpan - rect.height) * 0.5);
+    stage.style.setProperty("--zoom-reserve-top", `${Math.max(0, extra - this.viewPanY)}px`);
+    stage.style.setProperty("--zoom-reserve-bottom", `${Math.max(0, extra + this.viewPanY)}px`);
   }
 
   containsPoint(point) { return Math.hypot(point.x - CENTER, point.y - CENTER) <= ART_RADIUS - 2; }

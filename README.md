@@ -6,13 +6,22 @@
 
 ## 运行
 
-项目使用原生 HTML、CSS、JavaScript 模块、Canvas 2D 和按需加载的 Three.js。基础 2D 编辑可离线运行；首次使用 GPU 水墨或 3D 赏伞时，需要联网从 jsDelivr 加载 Three.js 0.186.0。在项目根目录执行：
+项目使用原生 HTML、CSS、JavaScript 模块、Canvas 2D 和按需加载的 Three.js。Three.js 0.186.0 核心模块及项目使用的插件已随项目存放在 `vendor/three/`，GPU 水墨和 3D 赏伞不再依赖 jsDelivr。除分享等浏览器系统能力外，页面资源从当前站点同源加载。在项目根目录执行：
 
-powershell:
+```powershell
 python -m http.server 8000 --bind 127.0.0.1
+```
 
 浏览器打开 http://localhost:8000/。可使用电脑鼠标、触屏或 Apple Pencil；iPad Safari 建议使用横屏浏览。
 桌面和 iPad 横屏采用单屏编辑布局；手机屏幕较窄时，工具会排在画布下方。
+
+## UI 与互动水墨背景
+
+页面采用暖纸色、黛青和湖青为主的轻量新中式编辑界面，改为无外框的满幅工作台：顶部品牌与操作栏、中央伞面画布、右侧工具列直接置于整页水墨背景之上，控件组通过细分隔线组织，不再堆叠大面积卡片。控件参考 [BeUI](https://beui.dev/) 的内嵌范围滑块与标签切换，以及 [Rare UI](https://www.rareui.com/) 的轻量按压反馈和微交互；项目仍使用原生 HTML/CSS/JavaScript 实现，没有引入 React、Tailwind 构建步骤或远程组件依赖。
+
+页面底层以“烟雨西湖 · 游墨生花”为方向。独立的全屏 SVG 山水层使用平滑贝塞尔曲线表现远山与近岸，柔化的雾带和水面曲线波纹分层缓慢漂移；`InkWashBackground` WebGL Shader 单独负责纸面柔墨与指针扰动。鼠标或触控笔经过时，根据移动方向形成带渐细尾迹的墨韵；小范围、低浓度的 CSS 柔光只作辅助，避免盖成一整颗大水滴。笔迹按约 8px 间距插值，改善快速移动时的断续感，停下后仍缓慢渗开并在约 2.2 秒内淡去。2D 绘制时减弱远山、雾气、水波和背景动画，切换到 3D 赏伞时柔和增强。色彩采用宣纸白 `#F5F1E8`、烟墨灰 `#777A75`、浓墨黑 `#343936` 与黛青 `#80948D`。WebGL 渲染限制为低分辨率、最高 30 FPS；背景不接收或阻断画布 Pointer Events，也不写入作品纹理。它与伞面上可编辑、可保存的 GPU 湿墨绘画分开，是轻量程序化墨韵，不是完整的 Navier–Stokes 流体模拟。浏览器不支持 WebGL 时会回退到 Canvas 柔墨背景，并遵循减少动态效果的系统偏好。
+
+间距基于 `styles.css` 中的全局 `--spacing` 与 `--space-*` 刻度；界面颜色集中在 Tailwind v4 风格的 `@theme` 和 `:root` 设计令牌中，组件只引用统一的语义变量。背景 Shader 从同一组全局色值读取墨色与湖青。
 
 ## 操作
 
@@ -25,11 +34,12 @@ python -m http.server 8000 --bind 127.0.0.1
 - **2D 绘制 / 3D 赏伞**：状态栏切换视图。3D 模式使用独立 WebGL 预览，保留编辑器中的作品数据；切回 2D 后继续编辑，之后再进入 3D 会刷新伞面贴图。3D 模式的“保存”会导出当前赏伞画面 PNG，分享海报仍沿用二维作品图。
 - **收伞 / 开伞**：3D 视图可拖动“开合”滑杆控制开合度，也可按按钮播放约 1.25 秒的动画并中途反向。项目默认加载 Blender 制作的绸伞 GLB：绸面 Shape Key、独立竹骨、短骨、伞巢和连续竹柄带有统一的 `Umbrella Fold` 动画，由 AnimationMixer 按进度驱动。模型仍是可替换的视觉原型，没有布料碰撞模拟；正式工艺模型可替换 GLB。
 - **GPU 湿墨与调试**：`InkFluidSystem.js` 与 Three.js 共用 WebGLRenderer，以双缓冲速度场、颜料场和湿度场做输入注入、速度/颜料输运、局部扩散及干燥。右侧可切换绸面颜料、速度场、颜料密度和湿度场；“测试注入”用于无需绘画验证 GPU 输出。湿墨直接留在 2D/3D 伞面上，不会在松笔后转换成 Canvas 线；当前湿墨模式为单笔，放射生成暂由普通 Canvas 模式负责。该实现是适合 H5 的低分辨率近似输运，不包含完整 Navier–Stokes 压力求解。
-- **旋转与缩放**：拖动伞体旋转；滚轮或触屏双指缩放，视角范围受限。3D 预览在显示时低速自动旋转，切回 2D 后停止渲染循环。
+- **旋转与缩放**：2D 画布空白处拖动旋转，滚轮以指针为中心缩放；缩放范围为 60%–1000%，伞面可越过原始正方形编辑框显示，画布坐标仍按视图变换反算，放大后绘制位置不会错位。窄屏下画布会为放大后的可视范围留出页面空间，避免与下方工具重叠。3D 模型拖动旋转、滚轮或触屏双指缩放，视角范围受限；3D 预览在显示时低速自动旋转，切回 2D 后停止渲染循环。
 - **导入 Blender GLB**：3D 模式点击“导入 Blender GLB”选择单文件 `.glb`。建议伞面网格命名为 `canopy`、`cloth` 或 `fabric` 并提供有效 UV；没有 UV 时程序用水平投影临时映射，并在界面提示需要在 Blender 制作正式 UV。
 
 ## 文件结构
 
+```text
 Interaction Design/
 ├── index.html
 ├── styles.css
@@ -37,44 +47,67 @@ Interaction Design/
 ├── assets/
 │   ├── umbrella-cloth.png
 │   ├── models/
-│   │   ├── west-lake-umbrella.blend   Blender 可编辑源文件
-│   │   ├── west-lake-umbrella.glb     默认 3D 伞模及开合动画
-│   │   └── README.md                  模型结构、UV 和重新导出方法
+│   │   ├── west-lake-umbrella.blend
+│   │   ├── west-lake-umbrella.blend1
+│   │   ├── west-lake-umbrella.glb
+│   │   └── README.md
 │   └── motifs/
-│       ├── lotus.png             透明 RGBA 纹样草稿
-│       ├── west-lake.png
-│       ├── koi.png
 │       ├── bamboo.png
+│       ├── bamboo.svg
 │       ├── cloud.png
-│       ├── water.svg             简单线饰
-│       ├── *.svg                 保留的矢量资源，不作主纹样
-│       └── README.md             资源格式、检查与替换步骤
+│       ├── cloud.svg
+│       ├── koi.png
+│       ├── koi.svg
+│       ├── lotus.png
+│       ├── lotus.svg
+│       ├── west-lake.png
+│       ├── west-lake.svg
+│       ├── water.svg
+│       └── README.md
 ├── js/
 │   ├── main.js
-│   ├── app/App.js                交互模式、Pointer Events 与控件编排
-│   ├── rendering/ThreeUmbrellaPreview.js  Three.js 伞面、UV、CanvasTexture 与 GLB 预览
-│   ├── rendering/InkFluidSystem.js        速度、颜料、湿度双缓冲与调试视图
+│   ├── app/App.js
 │   ├── core/
-│   │   ├── ArtworkDocument.js    独立作品数据、历史快照、撤销重做
-│   │   ├── CompositionZones.js   交互构图分区、吸附和辅助线
-│   │   ├── CanvasManager.js      高分屏图层、绸面材质、竹骨与导出合成
-│   │   └── MandalaRenderer.js    平滑放射笔迹、纹样对象和环形副本
+│   │   ├── ArtworkDocument.js
+│   │   ├── CanvasManager.js
+│   │   ├── CompositionZones.js
+│   │   └── MandalaRenderer.js
 │   ├── drawing/
-│   │   ├── MotifLibrary.js       分类、稳定纹样 ID、文件格式和素材元数据
-│   │   └── PatternDrawer.js      透明 PNG/WebP/SVG 加载、比例保持与对象绘制
+│   │   ├── MotifLibrary.js
+│   │   └── PatternDrawer.js
 │   ├── features/
-│   │   ├── ShareManager.js       海报动画预览、下载和系统分享
-│   │   └── TemplateComposer.js   可编辑默认示例数据
+│   │   ├── AmbientMusic.js
+│   │   ├── ShareManager.js
+│   │   └── TemplateComposer.js
+│   ├── rendering/
+│   │   ├── InkFluidSystem.js
+│   │   └── ThreeUmbrellaPreview.js
 │   └── ui/
-│       └── ControlManager.js
-├── tools/create_blender_umbrella.py     Blender 模型与开合动画生成脚本
-└── creative-mandala/             原参考项目，保持不修改
+│       ├── ControlManager.js
+│       └── InkWashBackground.js
+├── vendor/three/
+│   ├── LICENSE
+│   ├── VERSION.txt
+│   ├── build/
+│   │   ├── three.core.js
+│   │   └── three.module.js
+│   └── examples/jsm/
+│       ├── controls/OrbitControls.js
+│       ├── loaders/GLTFLoader.js
+│       └── utils/
+│           ├── BufferGeometryUtils.js
+│           └── SkeletonUtils.js
+├── tools/create_blender_umbrella.py
+└── creative-mandala/  原参考项目，保留不改
+```
+
+树形目录放在 `text` 代码围栏中，以保持等宽字体、缩进和换行；不会再被 Markdown 当作普通文字合并成一段。
 
 ## 作品数据与渲染
 
 笔迹和纹样对象保存在 ArtworkDocument，Canvas 只作为渲染缓存。纹样对象包含 id、patternId、位置、比例、角度、重复数量、排列半径、朝向和所属区域。环形副本每次绘制时由该对象生成，不会永久压平到像素图层。
 
-画布按 720 × 720 个逻辑单位工作，并按 devicePixelRatio 调整像素缓冲区（最高 2x），控制 iPad 多层 Canvas 的内存占用。自由绘画默认使用 8 重、8px、45% 浓淡，可在 6、8、12 重之间吸附切换；环形纹样在中部最多 12 个，外圈小纹样最多 16 个。作品导出只合成绸面、笔迹、纹样、光影和伞骨；不包含选择框与辅助环带。
+画布按 720 × 720 个逻辑单位工作，并按 devicePixelRatio 调整像素缓冲区（最高 2x），控制 iPad 多层 Canvas 的内存占用。自由绘画默认使用 8 重、8px、45% 浓淡；放射重复范围为 1–14，滑块保留连续整数选择并提供 1、8、14 三个快捷刻度。环形纹样在中部最多 12 个，外圈小纹样最多 16 个。作品导出只合成绸面、笔迹、纹样、光影和伞骨；不包含选择框与辅助环带。
 
 绘画纹样作为独立透明图像加载，保留原始宽高比，以 Canvas 2D 实现移动、缩放、旋转与环形重复；不会再由程序给纹样叠加随机颗粒或模糊来伪造工笔细节。二维预览中的图案仍可与底色层混合，三维伞面则由统一的 Three.js 光照和丝绸材质响应。环形重复采用逐个淡入和轻微缩放。导出画布沿用静态图层合成，不包含鼠标光斑或选择框。
 
@@ -87,7 +120,7 @@ Interaction Design/
 - GPU 湿墨系统用 128 × 128 速度场、512 × 512 颜料场和 256 × 256 湿度场双缓冲；输入通过同一 UV 空间注入。实现速度回溯、颜料输运、局部扩散、涡旋扰动和湿度衰减。3D 视图把 GPU 颜料纹理映射到与伞面共用几何和 UV 的 PBR 湿墨层，随伞面曲率与开合变形。系统不读回像素，不复制 PavelDoGreat 的源代码；它参考该项目的 GPU 双缓冲与输运思路，属于轻量近似，不含完整压力迭代、Divergence/Gradient 投影或真实颜料物理。选择“水墨生成”时预热 Three.js 与 WebGL，减少第一笔等待；降低笔迹采样密度并限制每帧模拟批次以改善触屏延迟。
 - 声光响应使用项目内置的原创 Web Audio 江南氛围乐，不访问系统声音、不要求上传音频，也不需要额外音频文件。用户点击“声光响应”后，古琴感五声音阶拨弦、低音铺底与轻雨质感循环播放；同一音频分析器提取低频能量，驱动伞面微光、绸面粗糙度与背景雾层变化。再次点击暂停音乐和响应。音频由浏览器实时合成，首次播放需用户主动点击；扫描光只在进入 3D 后短暂播放一次。效果属于 Web Audio/WebGL 的轻量近似，不是 TouchDesigner 工程。
 - 伞面使用 CanvasTexture、程序生成的细织法线图和 MeshPhysicalMaterial；场景使用柔和环境光与方向光。纹理法线和绸缎高光是实时着色近似，并非实拍物理材质扫描。
-- Three.js 在第一次选择 GPU 水墨或切换到 3D 时动态加载。版本通过 HTML import map 固定为 0.186.0，依赖 jsDelivr 网络可用性；如果 CDN 无法访问，2D 普通笔刷仍可继续使用。
+- Three.js 在第一次选择 GPU 水墨或切换到 3D 时动态加载。HTML import map 指向项目内 `vendor/three/` 的 0.186.0 核心模块和插件，因此三维功能不依赖访问 jsDelivr。`vendor/three/LICENSE` 保留该 npm 包的许可证文本；升级版本时同步替换核心模块、插件及其依赖文件。
 - 导入 GLB 时，纹理会应用到命名伞面网格；若缺少有效 UV，会从水平伞面投影补出临时平面 UV（不是径向展开），界面会提示用户制作正式 UV。材质匹配优先看伞面网格名，避免把 silk-rib-seam 等竹骨缝线误认为绸面；导入动画按 GLB 作者数据原样播放，不改写关键帧。默认 Blender 模型的竹骨沿绸面曲率铺设，并使用独立直柄、伞巢和开合动画。
 - 3D 预览保存会把当前 WebGL 画面合成到柔和背景并导出 PNG。分享海报仍使用原有二维作品导出，以保留原来的动态海报预览和分享流程。
 

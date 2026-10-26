@@ -17,6 +17,11 @@ export class ControlManager {
     this.activePatternCategory = getMotifAsset(this.pattern)?.categoryId || MOTIF_CATEGORIES[0].id;
     this.assetStates = new Map(MOTIF_LIBRARY.map((asset) => [asset.id, "loading"]));
     this.createSegmentTicks();
+    this.rangeInputs = [...document.querySelectorAll('input[type="range"]')];
+    this.rangeInputs.forEach((input) => {
+      input.addEventListener("input", () => this.updateRangeProgress(input));
+      input.addEventListener("change", () => this.updateRangeProgress(input));
+    });
     this.renderPatternCategories();
     this.renderPatternCards();
     this.updateValueDisplays();
@@ -137,6 +142,16 @@ export class ControlManager {
     this.elements.segments.style.setProperty("--range-progress", `${progress}%`);
     this.elements.segmentTicks.querySelectorAll("[data-value]").forEach((tick) => tick.classList.toggle("is-selected", tick.dataset.value === this.elements.segments.value));
     this.updatePatternValues();
+    this.rangeInputs?.forEach((input) => this.updateRangeProgress(input));
+  }
+
+  updateRangeProgress(input) {
+    if (!input) return;
+    const minimum = Number(input.min) || 0;
+    const maximum = Number(input.max) || 100;
+    const value = Number(input.value) || 0;
+    const progress = maximum === minimum ? 100 : (value - minimum) / (maximum - minimum) * 100;
+    input.style.setProperty("--range-progress", `${Math.max(0, Math.min(100, progress))}%`);
   }
 
   updatePatternValues() {
@@ -145,6 +160,8 @@ export class ControlManager {
     this.elements.repeatRadiusValue.textContent = `${this.elements.repeatRadius.value}px`;
     this.elements.patternScaleValue.textContent = `${Math.round(Number(this.elements.patternScale.value) * 100)}%`;
     this.elements.patternRotationValue.textContent = `${this.elements.patternRotation.value}°`;
+    [this.elements.repeatCount, this.elements.repeatRadius, this.elements.patternScale, this.elements.patternRotation]
+      .forEach((input) => this.updateRangeProgress(input));
   }
 
   updatePatternReadout() {

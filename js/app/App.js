@@ -1,13 +1,15 @@
-import { CanvasManager } from "../core/CanvasManager.js";
+import { CanvasManager } from "../core/CanvasManager.js?v=20261026-ui-zoom-v1";
 import { MandalaRenderer } from "../core/MandalaRenderer.js";
 import { PatternDrawer } from "../drawing/PatternDrawer.js";
 import { ShareManager } from "../features/ShareManager.js";
 import { TemplateComposer } from "../features/TemplateComposer.js";
-import { ControlManager } from "../ui/ControlManager.js";
+import { ControlManager } from "../ui/ControlManager.js?v=20261026-ui-v4";
 
 // App 负责模式切换、Pointer Events、控件状态和功能模块编排。
 export class App {
-  constructor() {
+  constructor(inkWashBackground = null) {
+    this.inkWashBackground = inkWashBackground;
+    this.inkWashBackground?.setSceneMode("drawing");
     this.canvasManager = new CanvasManager(document.getElementById("umbrellaCanvas"));
     this.controls = new ControlManager();
     this.patternDrawer = new PatternDrawer((drawer) => this.controls.setAssetStates(drawer));
@@ -111,11 +113,11 @@ export class App {
     if (this.viewMode !== "2d") return;
     event.preventDefault();
     const stageRect = this.canvasStage.getBoundingClientRect();
-    const pointerX = Math.max(-stageRect.width * 0.5, Math.min(stageRect.width * 0.5, event.clientX - (stageRect.left + stageRect.width * 0.5)));
-    const pointerY = Math.max(-stageRect.height * 0.5, Math.min(stageRect.height * 0.5, event.clientY - (stageRect.top + stageRect.height * 0.5)));
+    const pointerX = event.clientX - (stageRect.left + stageRect.width * 0.5);
+    const pointerY = event.clientY - (stageRect.top + stageRect.height * 0.5);
     const previousZoom = this.canvasManager.viewZoom;
     const zoomFactor = Math.exp(-event.deltaY * 0.0015);
-    const nextZoom = Math.max(0.6, Math.min(3.2, previousZoom * zoomFactor));
+    const nextZoom = Math.max(0.6, Math.min(10, previousZoom * zoomFactor));
     const ratio = nextZoom / previousZoom;
     // Keep the point under the pointer in place while zooming, so users can
     // inspect any part of the umbrella instead of only enlarging its center.
@@ -363,6 +365,7 @@ export class App {
       document.getElementById("saveBtn").textContent = "保存";
     }
     this.viewMode = viewMode;
+    this.inkWashBackground?.setSceneMode(viewMode === "3d" ? "viewing" : "drawing");
     document.querySelector(".status-hint").textContent = viewMode === "3d"
       ? "拖动旋转 · 双指或滚轮缩放"
       : (this.mode === "brush" ? "伞面绘画 · 空白处拖动旋转 · 滚轮缩放" : "伞面放置纹样 · 空白处拖动旋转 · 滚轮缩放");
