@@ -14,7 +14,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261026-ink-wash-v14">
+  <link rel="stylesheet" href="styles.css?v=20261027-uiverse-webawesome-v21">
 </head>
 <body>
   <canvas id="inkWashBackground" class="ink-wash-background" aria-hidden="true"></canvas>
@@ -35,33 +35,29 @@
         <stop offset=".72" stop-color="#F5F1E8" stop-opacity=".13" />
         <stop offset="1" stop-color="#F5F1E8" stop-opacity="0" />
       </linearGradient>
-      <linearGradient id="lakeRipple" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#80948D" stop-opacity="0" />
-        <stop offset=".2" stop-color="#80948D" stop-opacity=".34" />
-        <stop offset=".58" stop-color="#777A75" stop-opacity=".22" />
-        <stop offset="1" stop-color="#80948D" stop-opacity="0" />
-      </linearGradient>
       <filter id="softLakeEdge" x="-5%" y="-20%" width="110%" height="140%">
-        <feGaussianBlur stdDeviation="3.2" />
+        <feGaussianBlur stdDeviation="5.2" />
       </filter>
       <filter id="softLakeMist" x="-10%" y="-60%" width="120%" height="220%">
         <feGaussianBlur stdDeviation="20" />
       </filter>
+      <filter id="lakeWave" x="-3%" y="-30%" width="106%" height="160%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.006 0.022" numOctaves="1" seed="4" result="waveNoise">
+          <animate attributeName="baseFrequency" values="0.006 0.022;0.009 0.032;0.006 0.022" dur="9s" repeatCount="indefinite" />
+        </feTurbulence>
+        <feDisplacementMap in="SourceGraphic" in2="waveNoise" scale="6.5" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
     </defs>
     <g class="landscape-far">
-      <path d="M0 444 C72 430 97 390 163 392 C224 394 244 425 301 426 C365 427 384 374 448 366 C516 358 541 407 607 416 C677 426 708 393 771 390 C836 387 862 422 922 423 C988 424 1037 373 1108 369 C1182 365 1217 414 1281 421 C1354 429 1394 391 1459 394 C1520 397 1551 428 1600 433 L1600 900 L0 900 Z" fill="url(#farLakeMountain)" filter="url(#softLakeEdge)" />
+      <path d="M-40 449 C38 444 79 415 132 397 C190 377 229 388 268 415 C303 439 333 440 370 425 C411 409 431 373 474 364 C518 354 555 370 580 400 C607 432 643 438 685 422 C727 406 749 386 786 386 C822 386 848 404 878 421 C913 441 951 440 990 422 C1036 402 1068 373 1115 367 C1164 360 1195 378 1225 404 C1261 436 1291 442 1332 426 C1372 410 1405 388 1445 389 C1492 390 1527 420 1570 431 C1601 439 1624 438 1640 436 L1640 900 L-40 900 Z" fill="url(#farLakeMountain)" filter="url(#softLakeEdge)" />
+      <path d="M-20 458 C102 432 128 405 205 402 C274 400 319 439 389 438 C474 437 499 389 560 383 C641 375 668 426 748 430 C826 434 857 404 920 400 C997 396 1036 435 1110 436 C1193 437 1230 391 1305 389 C1387 387 1424 428 1501 437 C1542 442 1584 440 1620 436" fill="none" stroke="#80948D" stroke-opacity=".24" stroke-width="2" filter="url(#lakeWave)" />
     </g>
     <g class="landscape-near">
-      <path d="M0 518 C79 503 121 469 199 476 C275 483 299 525 376 523 C465 521 492 463 575 460 C653 457 694 503 767 508 C854 514 899 475 980 479 C1055 482 1095 524 1177 522 C1270 520 1304 475 1383 478 C1470 480 1516 518 1600 514 L1600 900 L0 900 Z" fill="url(#nearLakeMountain)" filter="url(#softLakeEdge)" />
+      <path d="M-40 526 C42 519 91 493 145 480 C208 464 254 478 291 506 C332 537 366 543 411 526 C459 508 491 470 542 461 C592 452 627 465 658 491 C695 522 732 538 776 528 C820 518 847 490 887 482 C938 471 980 483 1014 510 C1051 539 1090 546 1135 530 C1188 512 1217 480 1267 477 C1320 474 1358 494 1390 518 C1428 546 1465 549 1510 533 C1557 517 1590 513 1640 519 L1640 900 L-40 900 Z" fill="url(#nearLakeMountain)" filter="url(#softLakeEdge)" />
+      <path d="M20 537 C140 520 177 492 239 492 C306 492 333 529 396 536 C474 545 507 490 570 481 C647 471 678 515 751 526 C825 538 860 500 930 495 C1006 489 1047 527 1120 537 C1192 546 1231 499 1301 492 C1380 484 1417 525 1490 538" fill="none" stroke="#777A75" stroke-opacity=".2" stroke-width="2" filter="url(#lakeWave)" />
     </g>
     <g class="landscape-mist" filter="url(#softLakeMist)">
       <path d="M-30 483 C150 446 267 462 407 480 C563 500 646 478 799 469 C958 459 1070 477 1212 486 C1376 496 1481 465 1630 462 L1630 550 C1453 550 1355 532 1195 539 C1049 545 953 522 799 530 C637 538 545 557 397 538 C245 519 139 524 -30 558 Z" fill="url(#lakeMist)" />
-    </g>
-    <g class="landscape-water">
-      <path d="M-30 594 C162 578 260 611 421 602 C591 593 697 570 864 587 C1051 606 1162 619 1331 600 C1446 587 1532 590 1630 601" fill="none" stroke="url(#lakeRipple)" stroke-width="2" />
-      <path d="M-30 630 C122 619 237 641 361 634 C532 625 640 611 805 627 C945 642 1118 651 1274 636 C1425 622 1514 624 1630 637" fill="none" stroke="url(#lakeRipple)" stroke-width="1.5" />
-      <path d="M-30 678 C147 664 254 689 411 681 C561 674 685 658 835 672 C1000 688 1152 699 1311 683 C1432 671 1522 670 1630 682" fill="none" stroke="url(#lakeRipple)" stroke-width="1.2" />
-      <path d="M-30 729 C119 719 239 741 366 733 C531 723 670 714 818 728 C970 741 1108 751 1267 740 C1419 728 1515 720 1630 734" fill="none" stroke="url(#lakeRipple)" stroke-width="1" />
     </g>
   </svg>
   <div class="app-shell">
@@ -74,12 +70,10 @@
         </div>
       </div>
       <div class="header-actions">
-        <input id="designName" class="design-name" type="text" maxlength="20" value="苏堤春晓" aria-label="作品名称">
         <button class="button btn-accent" id="randomBtn" type="button">灵感</button>
         <button class="button btn-secondary" id="templateBtn" type="button">示例</button>
-        <button class="button btn-secondary" id="clearBtn" type="button">空白</button>
-        <button class="button btn-primary" id="saveBtn" type="button">保存</button>
-        <button class="button btn-share" id="shareBtn" type="button">分享</button>
+        <button class="button btn-secondary" id="clearBtn" type="button">清空</button>
+        <button class="button btn-primary" id="saveBtn" type="button">存入画廊</button>
       </div>
     </header>
 
@@ -113,7 +107,6 @@
             <output id="umbrellaFoldValue" for="umbrellaFoldRange">展开</output>
             <button class="viewer-button fold-toggle" id="foldToggleBtn" type="button" aria-label="收伞">收伞</button>
           </div>
-          <p class="viewer-hint">拖动旋转 · 双指或滚轮缩放</p>
           <p class="viewer-error" id="threeError" hidden></p>
         </div>
         <div class="canvas-status" aria-live="polite">
@@ -121,7 +114,6 @@
             <span id="patternReadout">西湖荷花</span>
             <span class="status-divider"></span>
             <span>画笔对称：<b id="segmentReadout">8</b></span>
-            <span class="status-hint">伞面绘画 · 空白处拖动旋转 · 滚轮缩放</span>
           </div>
           <div class="view-switch" role="group" aria-label="预览模式">
             <button type="button" class="view-button is-active" data-view-mode="2d" aria-pressed="true">2D 绘制</button>
@@ -152,7 +144,6 @@
             <button type="button" class="style-chip" data-brush-style="clean">清晰</button>
             <button type="button" class="style-chip" data-brush-style="fluid">水墨生成</button>
           </div>
-          <p class="brush-style-hint" id="brushStyleHint" hidden>笔迹直接生成湿墨并留在伞面；松手后继续流动、逐渐定形，可撤销。</p>
           <div class="swatch-row" role="group" aria-label="笔触颜色">
             <input type="color" id="colorPicker" value="#b96e68" aria-label="自选笔触颜色">
             <button type="button" class="color-swatch is-active" data-brush-color="#b96e68" style="--swatch:var(--color-lotus)" aria-label="荷花红"></button>
@@ -180,7 +171,6 @@
           </div>
           <div class="segment-slider">
             <input type="range" id="segments" min="1" max="14" step="1" value="8" aria-label="放射重复数量">
-            <div class="range-ticks" id="segmentTicks" role="group" aria-label="放射数量选项"></div>
           </div>
           <div class="control-item compact-item">
             <label class="check-row" for="mirror"><input type="checkbox" id="mirror" checked><span>镜像</span></label>
@@ -246,21 +236,6 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <div class="modal" id="shareOverlay" hidden>
-    <section class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
-      <button class="modal-close" id="closeShareBtn" type="button" aria-label="关闭">×</button>
-      <div class="share-heading">
-        <h2 id="shareTitle">伞下江南</h2>
-        <p>JIANGNAN BENEATH THE UMBRELLA</p>
-      </div>
-      <div class="poster-stage"><img id="posterPreview" alt="我的江南伞作品海报"></div>
-      <div class="share-actions">
-        <button class="button btn-secondary" id="downloadPosterBtn" type="button">保存海报</button>
-        <button class="button btn-primary" id="sharePosterBtn" type="button">分享作品</button>
-      </div>
-    </section>
-  </div>
-
-  <script type="module" src="js/main.js?v=20261026-ink-wash-v11"></script>
+  <script type="module" src="js/main.js?v=20261027-uiverse-webawesome-v35"></script>
 </body>
 </html>

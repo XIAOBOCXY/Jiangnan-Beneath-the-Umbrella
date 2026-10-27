@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { InkFluidSystem } from "./InkFluidSystem.js?v=20261023-ink-fluid-v3";
+import { InkFluidSystem } from "./InkFluidSystem.js?v=20261026-yakudoo-brush-head-v6";
 import { AmbientMusic } from "../features/AmbientMusic.js";
 
 const RADIUS = 1.78;
@@ -60,7 +60,6 @@ export class ThreeUmbrellaPreview {
     this.displayMode = "3d";
     this.inkFluid = null;
     this.inkOpacity = 1;
-    this.brushSettings = { color: "#b96e68", opacity: 0.45, brushSize: 8 };
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -83,7 +82,7 @@ export class ThreeUmbrellaPreview {
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 30);
-    this.camera.position.set(3.15, 2.65, 3.85);
+    this.camera.position.set(0.15, 6.2, 0.2);
     // 柔和的下方反射光避免从伞下观察时双面绸料发黑。
     this.ambientLight = new THREE.HemisphereLight(0xf7f3e8, 0xc9c0ae, 1.55);
     this.scene.add(this.ambientLight);
@@ -157,14 +156,19 @@ export class ThreeUmbrellaPreview {
     this.host = host;
     if (this.renderer.domElement.parentElement !== host) host.appendChild(this.renderer.domElement);
     this.resize();
-    if (this.displayMode === "fluid") this.inkFluid?.renderOverlay();
+    if (this.displayMode === "fluid") {
+      this.inkFluid?.renderOverlay();
+    }
     return this;
   }
 
-  setBrushSettings(settings = {}) { this.brushSettings = { ...this.brushSettings, ...settings }; }
   injectInk(splat = {}) {
     this.inkFluid?.addSplat(splat);
     if (this.displayMode === "fluid" && !this.frameHandle) this.setActive(true);
+  }
+  injectInks(splats = []) {
+    this.inkFluid?.addSplats(splats);
+    if (splats.length && this.displayMode === "fluid" && !this.frameHandle) this.setActive(true);
   }
   setFluidDebugMode(mode) {
     this.inkFluid?.setDebugMode(mode);
@@ -183,15 +187,24 @@ export class ThreeUmbrellaPreview {
     if (!this.inkFluid) return null;
     const mode = this.displayMode;
     const debugMode = this.inkFluid.debugMode;
-    this.inkFluid.setDebugMode("composite");
-    this.inkFluid.renderOverlay();
+    const previousSize = this.renderer.getSize(new THREE.Vector2());
     const snapshot = document.createElement("canvas");
     snapshot.width = 512;
     snapshot.height = 512;
-    snapshot.getContext("2d").drawImage(this.renderer.domElement, 0, 0, 512, 512);
-    this.inkFluid.setDebugMode(debugMode);
-    this.displayMode = mode;
-    this.renderOnce();
+    try {
+      // Capture in the square canopy UV domain even when the visible 3D host
+      // is a wide viewport; this keeps PNG/share snapshots from stretching.
+      this.renderer.setSize(512, 512, false);
+      this.inkFluid.aspect = 1;
+      this.inkFluid.setDebugMode("composite");
+      this.inkFluid.renderOverlay();
+      snapshot.getContext("2d").drawImage(this.renderer.domElement, 0, 0, 512, 512);
+    } finally {
+      this.renderer.setSize(previousSize.x, previousSize.y, false);
+      this.inkFluid.setDebugMode(debugMode);
+      this.displayMode = mode;
+      this.renderOnce();
+    }
     return snapshot;
   }
 
@@ -1124,7 +1137,9 @@ export class ThreeUmbrellaPreview {
   }
 
   resetCamera() {
-    this.camera.position.set(2.6, 3.6, 3.5);
+    // Start close to top-down so the round silk canopy reads as a circle;
+    // users can still orbit to inspect its curvature and underside.
+    this.camera.position.set(0.15, 6.2, 0.2);
     this.controls.target.set(0, -0.12, 0);
     this.controls.update();
   }
@@ -1157,7 +1172,9 @@ export class ThreeUmbrellaPreview {
 
   renderOnce() {
     if (!this.renderer || !this.host.clientWidth || !this.host.clientHeight) return;
-    if (this.displayMode === "fluid") this.inkFluid?.renderOverlay();
+    if (this.displayMode === "fluid") {
+      this.inkFluid?.renderOverlay();
+    }
     else { this.syncInkMaterials(); this.renderer.render(this.scene, this.camera); }
   }
 

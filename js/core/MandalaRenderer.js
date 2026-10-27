@@ -22,24 +22,36 @@ export class MandalaRenderer {
 
   beginStroke(point, settings) {
     this.document.commit();
-    const stroke = { id: uid(), points: [{ ...point, pressure: settings.pressureFactor || 1 }], settings: { ...settings } };
-    if (settings.brushStyle === "fluid") stroke.fluidSplats = [];
+    // All freehand presets share the same live GPU ink head. Source points and
+    // UV segments remain in the document so history can rebuild the pigment.
+    const stroke = {
+      id: uid(),
+      points: [{ ...point, pressure: settings.pressureFactor || 1 }],
+      settings: { ...settings, gpuInk: settings.gpuInk !== false }
+    };
+    if (stroke.settings.gpuInk || settings.brushStyle === "fluid") stroke.fluidSplats = [];
     this.document.strokes.push(stroke);
     this.dirty.strokes = true;
-    this.render({ markTexture: settings.brushStyle !== "fluid" });
+    this.render({ markTexture: !stroke.settings.gpuInk && settings.brushStyle !== "fluid" });
     return stroke;
   }
 
   appendFluidSplats(strokeId, splats) {
     const stroke = this.document.strokes.find((item) => item.id === strokeId);
-    if (!stroke || stroke.settings.brushStyle !== "fluid") return;
+    if (!stroke || (!stroke.settings.gpuInk && stroke.settings.brushStyle !== "fluid")) return;
     stroke.fluidSplats ||= [];
     stroke.fluidSplats.push(...splats.map((splat) => ({
       uv: { x: splat.uv.x, y: splat.uv.y },
-      force: { x: splat.force.x, y: splat.force.y },
+      fromUv: { x: (splat.fromUv || splat.uv).x, y: (splat.fromUv || splat.uv).y },
+      force: { x: splat.force?.x || 0, y: splat.force?.y || 0 },
       color: splat.color,
       radius: splat.radius,
-      opacity: splat.opacity
+      opacity: splat.opacity,
+      water: splat.water,
+      grain: splat.grain,
+      speed: splat.speed || 0,
+      pressure: splat.pressure ?? 0.5,
+      seed: splat.seed
     })));
   }
 
@@ -50,12 +62,12 @@ export class MandalaRenderer {
     if (Math.hypot(point.x - previous.x, point.y - previous.y) < .8) return;
     stroke.points.push({ ...point, pressure: settings.pressureFactor || 1 });
     this.dirty.strokes = true;
-    this.render({ markTexture: stroke.settings.brushStyle !== "fluid" });
+    this.render({ markTexture: !stroke.settings.gpuInk && stroke.settings.brushStyle !== "fluid" });
   }
 
   endStroke() {
     const stroke = this.document.strokes[this.document.strokes.length - 1];
-    if (stroke?.settings.brushStyle !== "fluid") {
+    if (!stroke?.settings.gpuInk && stroke?.settings.brushStyle !== "fluid") {
       if (stroke) this.animateInkWash(stroke.id);
       this.render();
       return;
@@ -444,12 +456,12 @@ export class MandalaRenderer {
   drawStroke(ctx, stroke) {
     const center = this.canvasManager.center;
     const sourceSettings = stroke.settings;
-    // Fluid strokes remain GPU pigment on the canopy; Canvas stores only their
-    // editable source data for history and replay, never draws a second line.
-    if (sourceSettings.brushStyle === "fluid") return;
+    // GPU ink is the visible artwork for every brush preset. Canvas keeps the
+    // editable path/history, but must not paint a duplicate vector stroke.
+    if (sourceSettings.gpuInk === true || sourceSettings.brushStyle === "fluid") return;
     const settings = sourceSettings;
     const count = Math.max(1, Number(settings.segments) || 8);
-    const mirrorCount = settings.mirror ? 2 : 1;
+    const mirrorCount = count > 1 && settings.mirror ? 2 : 1;
     const wash = this.inkWash?.strokeId === stroke.id ? this.inkWash : null;
     const washProgress = wash ? Math.min(1, (performance.now() - wash.startedAt) / wash.duration) : 1;
     ctx.save();

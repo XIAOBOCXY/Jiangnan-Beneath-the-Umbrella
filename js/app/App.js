@@ -1,9 +1,17 @@
-import { CanvasManager } from "../core/CanvasManager.js?v=20261026-ui-zoom-v1";
+import { CanvasManager } from "../core/CanvasManager.js?v=20261026-ui-zoom-v4";
 import { MandalaRenderer } from "../core/MandalaRenderer.js";
 import { PatternDrawer } from "../drawing/PatternDrawer.js";
-import { ShareManager } from "../features/ShareManager.js";
 import { TemplateComposer } from "../features/TemplateComposer.js";
-import { ControlManager } from "../ui/ControlManager.js?v=20261026-ui-v4";
+import { ControlManager } from "../ui/ControlManager.js?v=20261027-uiverse-webawesome-v11";
+
+const INK_PRESETS = {
+  // Dry presets inject pigment only. The shader keeps their edges crisp;
+  // texture adds fiber grain without enabling water diffusion.
+  soft:    { size: 1.3, opacity: 0.76, water: 0.2, grain: 0.025, flow: 0.008 },
+  texture: { size: 0.62, opacity: 0.96, water: 0, grain: 0.24, flow: 0 },
+  clean:   { size: 0.78, opacity: 0.94, water: 0, grain: 0, flow: 0 },
+  fluid:   { size: 1.12, opacity: 1.00, water: 1.00, grain: 0.095, flow: 0.055 }
+};
 
 // App 负责模式切换、Pointer Events、控件状态和功能模块编排。
 export class App {
@@ -16,10 +24,6 @@ export class App {
     this.renderer = new MandalaRenderer(this.canvasManager, this.patternDrawer);
     this.canvasManager.onResize = () => { this.renderer.invalidate(); this.renderer.render(); };
     this.templateComposer = new TemplateComposer(this.canvasManager, this.patternDrawer);
-    this.share = new ShareManager(() => {
-      if (this.threePreview) this.canvasManager.setFluidSnapshot(this.threePreview.captureFluidSnapshot());
-      return this.canvasManager.createExportCanvas();
-    }, (message) => this.showMessage(message));
     this.mode = "brush";
     this.viewMode = "2d";
     this.threePreview = null;
@@ -27,6 +31,7 @@ export class App {
     this.bundledModelPromise = null;
     this.pendingFluidSplats = [];
     this.lastFluidPoint = null;
+    this.fluidSealTimer = 0;
     this.canvasManager.onTextureDirty = () => this.refreshThreeTexture();
     this.gesture = null;
     this.controlEdits = new Set();
@@ -43,6 +48,7 @@ export class App {
       this.canvasManager.canvas.classList.remove("is-loading");
       this.updateReadouts();
       this.showMessage("荷韵西湖示例已载入");
+      this.warmFluidPreview();
     });
   }
 
@@ -54,7 +60,6 @@ export class App {
     this.canvasContainer.addEventListener("pointerup", (event) => this.onPointerEnd(event));
     this.canvasContainer.addEventListener("pointercancel", (event) => this.onPointerEnd(event));
     this.canvasContainer.addEventListener("lostpointercapture", (event) => this.onPointerEnd(event));
-    this.canvasContainer.addEventListener("pointerleave", () => { if (!this.gesture) this.canvasManager.setPointerLight(null); });
     this.canvasContainer.addEventListener("wheel", (event) => this.onCanvasWheel(event), { passive: false });
   }
 
@@ -80,10 +85,9 @@ export class App {
     }));
     document.querySelectorAll("[data-brush-style]").forEach((button) => button.addEventListener("click", () => {
       document.querySelectorAll("[data-brush-style]").forEach((item) => item.classList.toggle("is-active", item === button));
-      this.syncBrushStyleUI();
       // Load the shared WebGL renderer while the user is choosing a brush,
       // instead of making the first stroke wait for Three.js and GPU setup.
-      if (button.dataset.brushStyle === "fluid" && this.isReady) this.warmFluidPreview();
+      if (this.isReady) this.warmFluidPreview();
     }));
     document.querySelectorAll("[data-orientation]").forEach((button) => button.addEventListener("click", () => {
       if (!this.renderer.getSelected()) return;
@@ -134,11 +138,13 @@ export class App {
     });
     elements.clearBtn.addEventListener("click", () => {
       if (!this.isReady) return;
-      this.renderer.clear(); this.threePreview?.clearFluid(); this.threePreview?.setInkOpacity(1); this.canvasManager.setFluidSnapshot(null); this.updateSelectionControls(); this.showMessage("已留白，可以开始创作");
+      window.clearTimeout(this.fluidSealTimer);
+      this.renderer.clear(); this.threePreview?.clearFluid(); this.threePreview?.setInkOpacity(1); this.canvasManager.setFluidSnapshot(null); this.updateSelectionControls(); this.showMessage("画布已清空");
     });
     elements.templateBtn.addEventListener("click", async () => {
       if (!this.isReady) return;
       await this.templateComposer.applyDefault(this.renderer);
+      window.clearTimeout(this.fluidSealTimer);
       this.threePreview?.clearFluid(); this.threePreview?.setInkOpacity(1); this.canvasManager.setFluidSnapshot(null);
       this.updateSelectionControls(); this.showMessage("荷韵西湖示例已恢复");
     });
@@ -147,18 +153,17 @@ export class App {
         if (this.viewMode === "2d" && this.threePreview) {
           this.canvasManager.setFluidSnapshot(this.threePreview.captureFluidSnapshot());
         }
-        await this.share.saveCanvas();
+        const downloaded = await this.downloadCanvas(this.canvasManager.createExportCanvas(), "jiangnan-umbrella.png");
+        if (downloaded) this.showMessage("画廊暂未启用，作品 PNG 已下载");
         return;
       }
       try {
-        const title = (elements.designName.value.trim() || "jiangnan-umbrella").replace(/[\\/:*?"<>|]/g, "-");
-        await this.threePreview.savePNG(`${title}-3D.png`);
-        this.showMessage("3D 赏伞图已保存");
+        await this.threePreview.savePNG("jiangnan-umbrella-3D.png");
+        this.showMessage("画廊暂未启用，3D 作品 PNG 已下载");
       } catch (error) {
         this.showMessage(error.message || "3D 图片保存失败");
       }
     });
-    elements.shareBtn.addEventListener("click", () => this.share.open());
     elements.undoBtn.addEventListener("click", () => this.undo());
     elements.redoBtn.addEventListener("click", () => this.redo());
     elements.repeatBtn.addEventListener("click", () => {
@@ -246,12 +251,7 @@ export class App {
       const target = this.threePreview.getFoldTarget() >= 0.5 ? 0 : 1;
       this.threePreview.animateFoldTo(target);
     });
-    document.getElementById("closeShareBtn").addEventListener("click", () => this.share.close());
-    document.getElementById("downloadPosterBtn").addEventListener("click", () => this.share.savePoster());
-    document.getElementById("sharePosterBtn").addEventListener("click", () => this.share.sharePoster());
-    this.share.overlay.addEventListener("click", (event) => { if (event.target === this.share.overlay) this.share.close(); });
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") this.share.close();
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? this.redo() : this.undo(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); this.redo(); }
       if ((event.key === "Delete" || event.key === "Backspace") && this.mode === "pattern" && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) {
@@ -260,26 +260,40 @@ export class App {
     });
   }
 
+  async downloadCanvas(canvas, filename) {
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) {
+      this.showMessage("图片生成失败，请再试一次");
+      return false;
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  }
+
   setMode(mode) {
     this.mode = mode;
     const isBrush = mode === "brush";
     this.controls.elements.brushTools.hidden = !isBrush;
     document.querySelector(".symmetry-group").hidden = !isBrush;
+    document.querySelector(".pattern-group").hidden = isBrush;
     document.getElementById("brushModeBtn").classList.toggle("is-active", isBrush);
     document.getElementById("patternModeBtn").classList.toggle("is-active", !isBrush);
     this.canvasManager.canvas.classList.toggle("pattern-mode", !isBrush);
-    if (this.viewMode === "2d") document.querySelector(".status-hint").textContent = isBrush
-      ? "伞面绘画 · 空白处拖动旋转 · 滚轮缩放"
-      : "伞面放置纹样 · 空白处拖动旋转 · 滚轮缩放";
     if (isBrush) { this.renderer.document.selectedId = null; this.renderer.render(); }
     this.updateSelectionControls();
-    this.syncBrushStyleUI();
   }
 
   async ensureThreePreview() {
     if (this.threePreview) return this.threePreview;
     if (!this.fluidInitPromise) {
-      this.fluidInitPromise = import("../rendering/ThreeUmbrellaPreview.js?v=20261023-ink-fluid-v3").then(({ ThreeUmbrellaPreview }) => {
+      this.fluidInitPromise = import("../rendering/ThreeUmbrellaPreview.js?v=20261026-brush-ui-v10").then(({ ThreeUmbrellaPreview }) => {
         const preview = new ThreeUmbrellaPreview(document.getElementById("threeHost"));
         preview.onFoldProgress = (progress) => this.updateFoldControls(progress);
         this.threePreview = preview;
@@ -287,7 +301,7 @@ export class App {
         const threeHost = document.getElementById("threeHost");
         preview.setPresentation(this.viewMode === "3d" ? "3d" : "fluid", this.viewMode === "3d" ? threeHost : fluidHost);
         preview.setFluidDebugMode(document.getElementById("fluidDebugMode").value);
-        this.pendingFluidSplats.splice(0).forEach((splat) => preview.injectInk(splat));
+        preview.injectInks(this.pendingFluidSplats.splice(0));
         preview.setActive(true);
         this.refreshThreeTexture(true);
         return preview;
@@ -301,11 +315,12 @@ export class App {
 
   warmFluidPreview() {
     this.ensureThreePreview().then((preview) => {
-      if (this.viewMode !== "2d" || this.controls.getSettings().brushStyle !== "fluid") return;
+      if (this.viewMode !== "2d") return;
       preview.setPresentation("fluid", document.getElementById("fluidHost"));
       preview.setActive(true);
     }).catch((error) => {
       console.warn("GPU 墨彩初始化失败：", error);
+      this.disableGpuInkFallback();
       this.showMessage("水墨模块未能启动，请检查网络或 WebGL 支持");
     });
   }
@@ -353,7 +368,7 @@ export class App {
       this.threePreview.setActive(true);
       if (entering3d) this.threePreview.playViewTransition();
       document.querySelector(".canvas-container").classList.add("is-3d");
-      document.getElementById("saveBtn").textContent = "保存 3D";
+      document.getElementById("saveBtn").textContent = "存入画廊";
     } else {
       document.getElementById("canvasStage").hidden = false;
       viewer.hidden = true;
@@ -362,19 +377,15 @@ export class App {
         this.threePreview.setActive(true);
       }
       document.querySelector(".canvas-container").classList.remove("is-3d");
-      document.getElementById("saveBtn").textContent = "保存";
+      document.getElementById("saveBtn").textContent = "存入画廊";
     }
     this.viewMode = viewMode;
     this.inkWashBackground?.setSceneMode(viewMode === "3d" ? "viewing" : "drawing");
-    document.querySelector(".status-hint").textContent = viewMode === "3d"
-      ? "拖动旋转 · 双指或滚轮缩放"
-      : (this.mode === "brush" ? "伞面绘画 · 空白处拖动旋转 · 滚轮缩放" : "伞面放置纹样 · 空白处拖动旋转 · 滚轮缩放");
     document.querySelectorAll("[data-view-mode]").forEach((button) => {
       const active = button.dataset.viewMode === viewMode;
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-pressed", String(active));
     });
-    this.syncBrushStyleUI();
     return true;
   }
 
@@ -422,15 +433,13 @@ export class App {
     if (!this.canvasManager.containsPoint(point)) return;
     event.preventDefault();
     this.canvasContainer.setPointerCapture(event.pointerId);
-    this.canvasManager.setPointerLight(point);
     if (this.mode === "brush") {
       const settings = this.settingsForPointer(this.controls.getSettings(), event);
-      // Lock the last wet stroke before the next one starts. The new stroke
-      // gets a clean local velocity field instead of carrying old momentum.
-      if (settings.brushStyle === "fluid") {
-        this.threePreview?.sealFluidMotion();
-        this.pendingFluidSplats.forEach((splat) => { splat.force = { x: 0, y: 0 }; });
-      }
+      // Keep old pigment fixed before a new stroke starts, so its velocity
+      // field cannot pull earlier marks across the silk.
+      window.clearTimeout(this.fluidSealTimer);
+      this.threePreview?.sealFluidMotion();
+      this.canvasContainer.classList.add("is-brush-drawing");
       const stroke = this.renderer.beginStroke(point, settings);
       this.gesture = { type: "brush", brushStyle: settings.brushStyle, strokeId: stroke?.id, pointerId: event.pointerId, lastPoint: point };
       this.injectFluidSegment(point, point, settings);
@@ -439,6 +448,7 @@ export class App {
     const selected = this.renderer.selectAt(point);
     if (selected) {
       this.renderer.document.commit();
+      this.canvasContainer.classList.add("is-pattern-moving");
       this.gesture = { type: "move", pointerId: event.pointerId, lastPoint: point };
     } else {
       const object = this.renderer.addPattern(this.controls.pattern, point, { snap: this.controls.elements.zoneSnap.checked });
@@ -450,8 +460,8 @@ export class App {
   onPointerMove(event) {
     if (this.viewMode !== "2d") return;
     const point = this.canvasManager.getPoint(event);
-    this.canvasManager.setPointerLight(this.canvasManager.containsPoint(point) ? point : null);
-    if (!this.gesture || event.pointerId !== this.gesture.pointerId) return;
+    if (!this.gesture) return;
+    if (event.pointerId !== this.gesture.pointerId) return;
     event.preventDefault();
     if (this.gesture.type === "rotate-view") {
       const angle = this.canvasManager.getStageAngle(event);
@@ -476,48 +486,54 @@ export class App {
 
   onPointerEnd(event) {
     if (!this.gesture || (event.pointerId !== undefined && event.pointerId !== this.gesture.pointerId)) return;
-    if (this.gesture.type === "brush") this.renderer.endStroke();
+    if (this.gesture.type === "brush") {
+      this.renderer.endStroke();
+      this.canvasContainer.classList.remove("is-brush-drawing");
+      this.scheduleFluidSeal();
+    }
     if (this.gesture.type === "rotate-view") this.canvasContainer.classList.remove("is-view-rotating");
+    if (this.gesture.type === "move") this.canvasContainer.classList.remove("is-pattern-moving");
     this.gesture = null;
     this.lastFluidPoint = null;
     this.updateSelectionControls();
   }
 
   injectFluidSegment(from, to, settings) {
-    if (settings.brushStyle !== "fluid") return;
+    if (settings.gpuInk === false) return;
     const diameter = this.canvasManager.radius * 2;
-    const distance = Math.hypot(to.x - from.x, to.y - from.y);
-    // GPU splats overlap naturally; avoid flooding the render-target queue on
-    // fast pointer events while keeping enough samples for a continuous mark.
-    const spacing = Math.max(3, (settings.brushSize || 8) * 0.9);
-    const sampleCount = Math.max(1, Math.min(5, Math.ceil(distance / spacing)));
     const now = performance.now();
     const seconds = Math.max(1 / 120, (now - (this.lastFluidPoint?.time || now - 16)) / 1000);
-    const rawForce = this.lastFluidPoint
-      ? { x: (to.x - this.lastFluidPoint.point.x) / diameter / seconds, y: -(to.y - this.lastFluidPoint.point.y) / diameter / seconds }
-      : { x: 0, y: 0 };
-    // Keep the user's local stroke direction, while avoiding a long one-way
-    // plume that drags the complete pigment mark after pointer-up.
-    const forceScale = Math.min(0.72, 3.2 / Math.max(0.001, Math.hypot(rawForce.x, rawForce.y)));
-    const force = { x: rawForce.x * forceScale, y: rawForce.y * forceScale };
-    const input = [];
-    for (let index = 1; index <= sampleCount; index += 1) {
-      const t = index / sampleCount;
-      const x = from.x + (to.x - from.x) * t;
-      const y = from.y + (to.y - from.y) * t;
-      input.push({
-        uv: { x: 0.5 + (x - this.canvasManager.center.x) / diameter, y: 0.5 - (y - this.canvasManager.center.y) / diameter },
-        force,
-        color: settings.color || "#537c7e",
-        radius: Math.max(0.008, Math.min(0.09, (settings.brushSize || 8) / diameter * 1.45)),
-        opacity: Math.max(0.05, Math.min(0.85, settings.opacity || 0.45))
-      });
-    }
-    this.renderer.appendFluidSplats(this.gesture?.strokeId, input);
+    const clipped = this.clipSegmentToCanopy(from, to, this.canvasManager.radius - 2);
     this.lastFluidPoint = { point: { ...to }, time: now };
+    if (!clipped) return;
+    const rawForce = {
+      x: (clipped.to.x - clipped.from.x) / diameter / seconds,
+      y: -(clipped.to.y - clipped.from.y) / diameter / seconds
+    };
+    const preset = INK_PRESETS[settings.brushStyle] || INK_PRESETS.soft;
+    const rawSpeed = Math.hypot(rawForce.x, rawForce.y);
+    const forceScale = rawSpeed > preset.flow ? preset.flow / Math.max(0.001, rawSpeed) : 1;
+    const source = {
+      fromUv: this.pointToCanopyUV(clipped.from, diameter),
+      uv: this.pointToCanopyUV(clipped.to, diameter),
+      force: { x: rawForce.x * forceScale, y: rawForce.y * forceScale },
+      // Yakudoo's brush line gains a little body as the tip moves faster;
+      // keep that signal separate from the capped fluid-force vector.
+      speed: Math.max(0, Math.min(1, rawSpeed / 2.2)),
+      pressure: Math.max(0, Math.min(1, settings.pointerPressure ?? 0.5)),
+      color: settings.color || "#537c7e",
+      radius: Math.max(0.006, Math.min(0.09, (settings.brushSize || 8) * (settings.pressureFactor || 1) * preset.size / diameter * 1.45)),
+      opacity: Math.max(0, Math.min(0.92, (settings.opacity ?? 0.45) * preset.opacity)),
+      water: settings.brushStyle === "texture" || settings.brushStyle === "clean" ? 0 : preset.water,
+      grain: preset.grain,
+      seed: Math.random()
+    };
+    // Keep only source segments in history. Copies are derived with the same
+    // radial/mirror transform as the visible 2D drawing coordinate system.
+    this.renderer.appendFluidSplats(this.gesture?.strokeId, [source]);
+    const input = this.expandInkSplat(source, settings, diameter);
     if (this.threePreview) {
-      this.threePreview.setBrushSettings(settings);
-      input.forEach((splat) => this.threePreview.injectInk(splat));
+      this.threePreview.injectInks(input);
       return;
     }
     this.pendingFluidSplats.push(...input);
@@ -526,59 +542,135 @@ export class App {
       this.ensureThreePreview().then((preview) => {
         preview.setPresentation(this.viewMode === "3d" ? "3d" : "fluid", document.getElementById(this.viewMode === "3d" ? "threeHost" : "fluidHost"));
         preview.setFluidDebugMode(document.getElementById("fluidDebugMode").value);
-        preview.setBrushSettings(settings);
-        this.pendingFluidSplats.splice(0).forEach((splat) => preview.injectInk(splat));
+        preview.injectInks(this.pendingFluidSplats.splice(0));
         preview.setActive(true);
       }).catch((error) => {
         this.pendingFluidSplats.length = 0;
         console.warn("GPU 墨彩初始化失败：", error);
+        this.disableGpuInkFallback();
         this.showMessage("水墨模块未能启动，请检查网络或 WebGL 支持");
       });
     }
   }
 
   rebuildFluidArtwork() {
-    // Fluid pigment is the visible artwork. Rebuild it from stored stroke
-    // splats after history changes so undo/redo never swaps it for a Canvas line.
+    // GPU pigment is the visible artwork for every preset. Rebuild from the
+    // recorded source segments after undo/redo, without old stroke momentum.
     this.pendingFluidSplats.length = 0;
     const strokes = this.renderer.document.strokes
-      .filter((stroke) => stroke.settings?.brushStyle === "fluid")
+      .filter((stroke) => stroke.settings?.gpuInk === true || stroke.settings?.brushStyle === "fluid")
       .filter((stroke) => stroke.fluidSplats?.length);
+    const replay = [];
+    const diameter = this.canvasManager.radius * 2;
+    strokes.forEach((stroke) => (stroke.fluidSplats || []).forEach((splat) => {
+      const settled = { ...splat, force: { x: 0, y: 0 } };
+      const copies = stroke.settings?.gpuInk === true
+        ? this.expandInkSplat(settled, stroke.settings, diameter)
+        : [settled];
+      copies.forEach((copy) => replay.push({ ...copy, force: { x: 0, y: 0 } }));
+    }));
     this.canvasManager.setFluidSnapshot(null);
     if (this.threePreview) {
       this.threePreview.clearFluid();
       this.threePreview.setInkOpacity(1);
-      // History replay restores the artwork as settled pigment. Replaying old
-      // velocity would make every completed stroke drift in the same direction.
-      strokes.forEach((stroke) => (stroke.fluidSplats || []).forEach((splat) => {
-        this.threePreview.injectInk({ ...splat, force: { x: 0, y: 0 } });
-      }));
+      this.threePreview.injectInks(replay);
       if (strokes.length) this.threePreview.setActive(true);
     } else {
-      strokes.forEach((stroke) => (stroke.fluidSplats || []).forEach((splat) => {
-        this.pendingFluidSplats.push({ ...splat, force: { x: 0, y: 0 } });
-      }));
+      this.pendingFluidSplats.push(...replay);
     }
   }
 
-  syncBrushStyleUI() {
-    const fluidMode = this.controls.getSettings().brushStyle === "fluid";
-    const symmetry = document.querySelector(".symmetry-group");
-    const hint = document.getElementById("brushStyleHint");
-    this.controls.elements.segments.disabled = fluidMode;
-    this.controls.elements.mirror.disabled = fluidMode;
-    symmetry?.classList.toggle("is-disabled", fluidMode);
-    if (hint) hint.hidden = !fluidMode;
-    if (this.viewMode === "2d" && this.mode === "brush") {
-      document.querySelector(".status-hint").textContent = fluidMode
-        ? "水墨生成 · 单笔湿墨，松手后流动并定形 · 滚轮缩放"
-        : "伞面绘画 · 空白处拖动旋转 · 滚轮缩放";
+  pointToCanopyUV(point, diameter) {
+    return {
+      x: 0.5 + (point.x - this.canvasManager.center.x) / diameter,
+      y: 0.5 - (point.y - this.canvasManager.center.y) / diameter
+    };
+  }
+
+  clipSegmentToCanopy(from, to, radius) {
+    const center = this.canvasManager.center;
+    const px = from.x - center.x, py = from.y - center.y;
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const a = dx * dx + dy * dy;
+    const c = px * px + py * py - radius * radius;
+    if (a < 1e-8) return c <= 0 ? { from: { ...from }, to: { ...to } } : null;
+    const b = 2 * (px * dx + py * dy);
+    const discriminant = b * b - 4 * a * c;
+    if (discriminant < 0) return c <= 0 ? { from: { ...from }, to: { ...to } } : null;
+    const root = Math.sqrt(discriminant);
+    const start = Math.max(0, (-b - root) / (2 * a));
+    const end = Math.min(1, (-b + root) / (2 * a));
+    if (start > end) return null;
+    return {
+      from: { x: from.x + dx * start, y: from.y + dy * start },
+      to: { x: from.x + dx * end, y: from.y + dy * end }
+    };
+  }
+
+  expandInkSplat(splat, settings = {}, diameter = this.canvasManager.radius * 2) {
+    const center = this.canvasManager.center;
+    const startUv = splat.fromUv || splat.uv;
+    const start = {
+      x: center.x + (startUv.x - 0.5) * diameter,
+      y: center.y - (startUv.y - 0.5) * diameter
+    };
+    const end = {
+      x: center.x + (splat.uv.x - 0.5) * diameter,
+      y: center.y - (splat.uv.y - 0.5) * diameter
+    };
+    const count = Math.max(1, Math.min(14, Number(settings.segments) || 1));
+    const mirrorCount = count > 1 && settings.mirror ? 2 : 1;
+    const copies = [];
+    for (let index = 0; index < count; index += 1) {
+      const angle = index * Math.PI * 2 / count;
+      const cosine = Math.cos(angle), sine = Math.sin(angle);
+      for (let mirror = 0; mirror < mirrorCount; mirror += 1) {
+        const transform = (point) => {
+          const x = point.x - center.x, y = point.y - center.y;
+          const rotatedX = cosine * x - sine * y;
+          let rotatedY = sine * x + cosine * y;
+          if (mirror) rotatedY = -rotatedY;
+          return { x: center.x + rotatedX, y: center.y + rotatedY };
+        };
+        const from = transform(start), to = transform(end);
+        const fromUv = this.pointToCanopyUV(from, diameter);
+        const uv = this.pointToCanopyUV(to, diameter);
+        // Convert the stored UV velocity back into the drawing plane, apply
+        // the identical transform, then return it to UV's upward Y axis.
+        const forceX = splat.force?.x || 0, forceScreenY = -(splat.force?.y || 0);
+        const rotatedForceX = cosine * forceX - sine * forceScreenY;
+        let rotatedForceY = sine * forceX + cosine * forceScreenY;
+        if (mirror) rotatedForceY = -rotatedForceY;
+        copies.push({ ...splat, fromUv, uv, force: { x: rotatedForceX, y: -rotatedForceY } });
+      }
     }
+    return copies;
+  }
+
+  scheduleFluidSeal() {
+    window.clearTimeout(this.fluidSealTimer);
+    // Allow a short wet-ink bloom after pointer-up, then freeze its movement.
+    this.fluidSealTimer = window.setTimeout(() => this.threePreview?.sealFluidMotion(), 900);
+  }
+
+  disableGpuInkFallback() {
+    this.gpuInkUnavailable = true;
+    this.pendingFluidSplats.length = 0;
+    this.renderer.document.strokes.forEach((stroke) => {
+      if (stroke.settings?.gpuInk !== true) return;
+      stroke.settings.gpuInk = false;
+      if (stroke.settings.brushStyle === "fluid") stroke.settings.brushStyle = "soft";
+    });
+    this.renderer.invalidate();
+    this.renderer.render();
   }
 
   settingsForPointer(settings, event) {
     const result = { ...settings };
     result.pressureFactor = event.pointerType === "pen" && event.pressure > 0 ? .62 + event.pressure * .76 : 1;
+    result.pointerPressure = event.pointerType === "pen" && event.pressure > 0 ? event.pressure : 0.5;
+    result.gpuInk = this.gpuInkUnavailable !== true;
+    if (!result.gpuInk && result.brushStyle === "fluid") result.brushStyle = "soft";
     return result;
   }
 

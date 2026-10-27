@@ -1,158 +1,118 @@
-const MARK_LIMIT = 24;
-const MARK_LIFETIME = 2.2;
-const TARGET_FPS = 30;
-const MARK_SPACING = 8;
+const TARGET_FPS = 60;
+const TRAIL_LIFETIME = 2.7;
+const BASE_TRAIL_WIDTH = 0.004;
+const PRESSED_TRAIL_PRESSURE = 0.02;
+const ACTIVE_TRAIL_WIDTH = BASE_TRAIL_WIDTH + PRESSED_TRAIL_PRESSURE;
 
 const VERTEX_SHADER = `
 attribute vec2 aPosition;
 varying vec2 vUv;
-
 void main() {
   vUv = aPosition * 0.5 + 0.5;
   gl_Position = vec4(aPosition, 0.0, 1.0);
 }`;
 
-const FRAGMENT_SHADER = `
+// The backdrop follows Yakudoo's BufferSim structure: one smoothed UV segment
+// enters a ping-pong texture every frame, then noise steers four directional
+// diffusion samples before one transparent foreground trail is composited.
+const TRAIL_SHADER = `
 precision mediump float;
-
 varying vec2 vUv;
+uniform sampler2D uPrevious;
+uniform sampler2D uNoise;
 uniform vec2 uResolution;
+uniform vec2 uFrom;
+uniform vec2 uTo;
+uniform float uSpeed;
+uniform float uThickness;
 uniform float uTime;
-uniform int uMarkCount;
-uniform vec4 uMarks[24];
-uniform float uMarkAges[24];
-uniform vec3 uInkColor;
-uniform vec3 uLakeColor;
-uniform vec3 uDeepInk;
-uniform float uSceneIntensity;
+uniform float uWaterQuantity;
+uniform float uWaterDiffusion;
+uniform float uPersistence;
+uniform float uGravity;
 
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+float segmentDistance(vec2 p, vec2 a, vec2 b) {
+  vec2 ab = b - a;
+  float h = clamp(dot(p - a, ab) / max(dot(ab, ab), 0.000001), 0.0, 1.0);
+  return length(p - (a + ab * h));
 }
-
-float noise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  float a = hash(i);
-  float b = hash(i + vec2(1.0, 0.0));
-  float c = hash(i + vec2(0.0, 1.0));
-  float d = hash(i + vec2(1.0, 1.0));
-  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-}
-
-float fbm(vec2 p) {
-  float value = 0.0;
-  float amplitude = 0.5;
-  value += noise(p) * amplitude; p *= 2.03; amplitude *= 0.5;
-  value += noise(p) * amplitude; p *= 2.01; amplitude *= 0.5;
-  value += noise(p) * amplitude; p *= 2.02; amplitude *= 0.5;
-  value += noise(p) * amplitude; p *= 2.04; amplitude *= 0.5;
-  value += noise(p) * amplitude;
-  return value / 0.96875;
+vec4 blurField(vec2 uv, vec2 spread, vec2 direction) {
+  vec4 color = vec4(0.0);
+  vec2 offset1 = vec2(0.013846153846) * direction;
+  vec2 offset2 = vec2(0.032307692308) * direction;
+  color += texture2D(uPrevious, uv) * 0.2270270270;
+  color += texture2D(uPrevious, uv + offset1 * spread) * 0.3162162162;
+  color += texture2D(uPrevious, uv - offset1 * spread) * 0.3162162162;
+  color += texture2D(uPrevious, uv + offset2 * spread) * 0.0702702703;
+  color += texture2D(uPrevious, uv - offset2 * spread) * 0.0702702703;
+  return color;
 }
 
 void main() {
-  float aspect = uResolution.x / max(uResolution.y, 1.0);
-  vec2 p = (vUv - 0.5) * vec2(aspect, 1.0);
-  float intensity = uSceneIntensity;
-  float t = uTime * mix(0.008, 0.019, intensity);
+  vec4 noise1 = texture2D(uNoise, vUv * 4.0 + vec2(uTime * 0.1, 0.0));
+  vec4 noise2 = texture2D(uNoise, vUv * 8.0 + vec2(0.0, uTime * 0.1) + noise1.rg * 0.5);
+  vec4 noise3 = texture2D(uNoise, vUv * 16.0 + vec2(-uTime * 0.05, 0.0) + noise2.rg * 0.5);
+  vec4 flowNoise = (noise1 + noise2 * 0.5 + noise3 * 0.25) / 1.75;
+  float directionX = (-0.5 + flowNoise.g) * flowNoise.r * 10.0;
+  float directionY = (-0.5 + flowNoise.b) * flowNoise.r * 10.0;
 
-  // Distant lake mist drifts almost imperceptibly behind the editor.
-  vec2 drift = vec2(t * 0.52, -t * 0.31);
-  float broad = fbm(p * 1.34 + drift);
-  float detail = fbm(p * 3.45 - drift * 1.18);
-  vec2 curl = vec2(
-    fbm(p * 2.25 + drift + vec2(7.2, 1.3)),
-    fbm(p * 2.25 - drift + vec2(2.1, 9.4))
-  ) - 0.5;
-  vec2 q = p + curl * mix(0.045, 0.082, intensity);
+  vec4 oldInk = texture2D(uPrevious, vUv);
+  float brightness = 1.0 - (oldInk.r + oldInk.g + oldInk.b) / 3.0;
+  vec4 ink = oldInk * (1.0 - uWaterDiffusion);
+  float quarterDiffusion = uWaterDiffusion * 0.25;
+  // Match Yakudoo's gravity stretch in the feedback buffer. With screen-space
+  // UVs this samples upward, so the retained pigment travels down the page.
+  vec2 stretchedUv = vUv * vec2(1.0, 1.0 + uGravity);
+  vec2 spread = vec2(uWaterQuantity * brightness);
+  ink += blurField(stretchedUv, spread, vec2(directionX, directionY)) * quarterDiffusion;
+  ink += blurField(stretchedUv, spread, vec2(directionY, directionX)) * quarterDiffusion;
+  ink += blurField(stretchedUv, spread, vec2(-directionX, -directionY)) * quarterDiffusion;
+  ink += blurField(stretchedUv, spread, vec2(-directionY, -directionX)) * quarterDiffusion;
+  ink.rgb *= uPersistence;
 
-  // Two soft ridges and a broken waterline suggest a misty West Lake horizon.
-  float farRidge = 0.035 + (noise(vec2(p.x * 1.35 + drift.x * 0.12, 1.7)) - 0.5) * 0.17;
-  float middleRidge = -0.12 + (noise(vec2(p.x * 1.8 - drift.x * 0.09, 3.9)) - 0.5) * 0.14;
-  float nearRidge = -0.28 + (noise(vec2(p.x * 2.15 - drift.x * 0.08, 5.3)) - 0.5) * 0.12;
-  float farDistance = (p.y - farRidge) * 6.2;
-  float middleDistance = (p.y - middleRidge) * 7.0;
-  float nearDistance = (p.y - nearRidge) * 7.4;
-  float farLand = exp(-farDistance * farDistance);
-  float middleLand = exp(-middleDistance * middleDistance);
-  float nearLand = exp(-nearDistance * nearDistance);
-  float vaporNoise = fbm(vec2(p.x * 2.2, p.y * 3.1) + drift * 0.22);
-  float vaporBand = exp(-pow(abs(p.y - farRidge - 0.08) * 5.5, 2.0)) * smoothstep(0.39, 0.72, vaporNoise);
-  float waterCenter = -0.37 + (noise(vec2(p.x * 1.65 + drift.x * 0.08, 6.1)) - 0.5) * 0.045;
-  float waterDistance = (p.y - waterCenter) * 8.0;
-  float waterBand = exp(-waterDistance * waterDistance);
-  float waterRipple = 0.5 + 0.5 * sin(p.x * 31.0 + p.y * 5.0 + t * 2.1 + detail * 2.0);
-  float waterLines = smoothstep(0.91, 0.99, waterRipple) * waterBand;
-
-  float localInk = 0.0;
-  vec2 mouseForce = vec2(0.0);
-  for (int i = 0; i < 24; i++) {
-    if (i < uMarkCount) {
-      vec4 mark = uMarks[i];
-      float age = uMarkAges[i];
-      vec2 center = (mark.xy - 0.5) * vec2(aspect, 1.0);
-      vec2 delta = q - center;
-      float distanceToMark = length(delta);
-      // A soft core feeds an asymmetric tail; it never blooms into a single drop.
-      float radius = 0.026 + (1.0 - exp(-age * 1.55)) * 0.014;
-      float decay = exp(-age * 1.18);
-      vec2 velocity = mark.zw * vec2(aspect, 1.0);
-      float speed = length(velocity);
-      vec2 direction = speed > 0.0005 ? velocity / speed : vec2(1.0, 0.0);
-      vec2 normal = vec2(-direction.y, direction.x);
-      float tailLength = radius * (1.2 + min(speed * 25.0, 1.55));
-      float angle = atan(delta.y, delta.x);
-      float edgeGrain = 0.5 + 0.25 * sin(angle * 3.0 + age * 2.7 + mark.x * 9.0)
-        + 0.25 * sin(angle * 5.0 - age * 1.9 + mark.y * 7.0);
-      float headRadius = radius * (0.82 + edgeGrain * 0.34);
-      float head = exp(-pow(distanceToMark / headRadius, 2.05) * 1.25);
-      float behind = -dot(delta, direction);
-      float lateral = dot(delta, normal);
-      float tailProgress = clamp(behind / max(tailLength, 0.001), 0.0, 1.0);
-      float tailWidth = radius * mix(0.78, 0.34, tailProgress);
-      float tail = exp(-pow(max(behind, 0.0) / max(tailLength, 0.001) * 1.65, 2.0)
-        - pow(lateral / max(tailWidth, 0.001), 2.0) * 1.2);
-      tail *= step(0.0, behind) * (1.0 - smoothstep(tailLength * 0.58, tailLength, behind));
-      tail *= smoothstep(0.0008, 0.008, speed);
-      float plume = clamp(head + tail * 0.58, 0.0, 1.0);
-      float influence = plume * decay;
-      vec2 radial = delta / max(distanceToMark, 0.001);
-
-      mouseForce += (radial * 0.012 + normal * min(speed * 0.42, 0.018)) * influence * intensity;
-      localInk += influence * (0.62 + min(speed * 1.5, 0.18));
-    }
+  if (uSpeed > 0.000001) {
+    vec2 aspect = vec2(uResolution.x / max(uResolution.y, 1.0), 1.0);
+    float thickness = clamp(uThickness + uSpeed * 0.3, 0.0001, 0.1);
+    float distanceToLine = segmentDistance(vUv * aspect, uFrom * aspect, uTo * aspect);
+    float line = 1.0 - smoothstep(thickness * 0.54, thickness, distanceToLine);
+    // Fade the deposit as the smoothed pointer settles. This preserves the
+    // source's motion-driven line while preventing a stationary endpoint from
+    // accumulating into a dark round stamp.
+    float deposition = line * smoothstep(0.000006, 0.00010, uSpeed);
+    // Store one monochrome ink-density field. The reference cycles RGB hues;
+    // this version keeps its transport and diffusion but renders as ink wash.
+    vec3 pigment = vec3(1.0);
+    ink.rgb = mix(ink.rgb, pigment, deposition);
   }
-
-  q += mouseForce;
-  float wash = broad * 0.62 + fbm(q * 2.1 + drift * 0.36) * 0.25 + fbm(q * 3.7 - drift) * 0.13;
-  float cloud = smoothstep(0.56, 0.76, wash) * (1.0 - smoothstep(0.82, 0.96, wash));
-  float haze = farLand * 0.19 + middleLand * 0.14 + nearLand * 0.105
-    + vaporBand * 0.15 + waterBand * (0.045 + waterRipple * 0.04 + waterLines * 0.045);
-  float alpha = (cloud * 0.105 + haze) * intensity + localInk * 0.44;
-  alpha = clamp(alpha, 0.0, 0.28);
-
-  float coolShift = clamp(detail * 0.34 + haze * 0.3, 0.0, 0.38);
-  vec3 ambientInk = mix(uInkColor, uLakeColor, coolShift);
-  vec3 ink = mix(ambientInk, uDeepInk, smoothstep(0.08, 0.42, localInk) * 0.78);
-  gl_FragColor = vec4(ink, alpha);
+  gl_FragColor = vec4(ink.rgb, 0.0);
 }`;
 
-/**
- * A quiet, independent page background. It never captures pointer events, so
- * drawing, sliders, and Three.js controls continue to receive their input.
- */
+const BACKGROUND_SHADER = `
+precision mediump float;
+varying vec2 vUv;
+uniform sampler2D uTrail;
+void main() {
+  vec4 trail = texture2D(uTrail, vUv);
+  float density = clamp(max(max(trail.r, trail.g), trail.b), 0.0, 1.0);
+  float core = smoothstep(0.06, 0.88, density);
+  vec3 softInk = vec3(0.47, 0.48, 0.45); // smoke gray at the feathered edge
+  vec3 deepInk = vec3(0.20, 0.22, 0.21); // charcoal center
+  vec3 color = mix(softInk, deepInk, core);
+  float opacity = pow(density, 0.74) * 0.78;
+  // A single neutral ink layer sits over the independent paper/landscape layers.
+  gl_FragColor = vec4(color, opacity);
+}`;
+
+/** Full-page, pointer-reactive ink wash; the canvas never captures input. */
 export class InkWashBackground {
   constructor(canvas) {
     if (!canvas) return;
     this.canvas = canvas;
-    this.marks = [];
-    this.lastPointer = null;
-    this.lastMarkAt = 0;
-    this.pointerFadeTimer = 0;
-    this.sceneIntensity = 0.4;
-    this.targetSceneIntensity = 0.4;
+    this.pointerTarget = null;
+    this.pointerCurrent = null;
+    this.lastRawPointer = null;
+    this.fallbackPoints = [];
+    this.hasTrailPixels = false;
     this.startedAt = performance.now();
     this.lastFrameAt = 0;
     this.frameRequest = 0;
@@ -160,13 +120,7 @@ export class InkWashBackground {
     this.colors = this.readThemeColors();
 
     try {
-      this.gl = canvas.getContext("webgl", {
-        alpha: true,
-        antialias: false,
-        depth: false,
-        premultipliedAlpha: false,
-        powerPreference: "low-power"
-      });
+      this.gl = canvas.getContext("webgl", { alpha: true, antialias: false, depth: false, premultipliedAlpha: false, powerPreference: "low-power" });
       if (!this.gl) throw new Error("WebGL unavailable");
       this.initializeWebGL();
     } catch (error) {
@@ -174,43 +128,32 @@ export class InkWashBackground {
       this.activateCanvasFallback();
     }
 
-    this.onPointerMove = (event) => {
-      this.updatePointerHalo(event);
-      this.addMark(event, false);
-    };
-    this.onPointerDown = (event) => {
-      this.updatePointerHalo(event);
-      this.addMark(event, true);
-    };
-    this.onPointerLeave = () => {
-      window.clearTimeout(this.pointerFadeTimer);
-      this.pointerFadeTimer = window.setTimeout(() => document.documentElement.style.setProperty("--ink-pointer-alpha", "0"), 1000);
-      this.lastPointer = null;
-    };
+    this.onPointerMove = (event) => this.handlePointer(event, false);
+    this.onPointerDown = (event) => this.handlePointer(event, true);
+    this.onPointerLeave = () => this.resetPointer();
     this.onResize = () => this.resize();
     this.onVisibilityChange = () => {
-      if (document.hidden) {
-        cancelAnimationFrame(this.frameRequest);
-        this.frameRequest = 0;
-      } else {
-        this.lastFrameAt = 0;
-        this.requestFrame();
-      }
+      if (document.hidden) { cancelAnimationFrame(this.frameRequest); this.frameRequest = 0; }
+      else { this.lastFrameAt = 0; this.requestFrame(); }
     };
     window.addEventListener("pointermove", this.onPointerMove, { passive: true });
     window.addEventListener("pointerdown", this.onPointerDown, { passive: true });
     window.addEventListener("pointerleave", this.onPointerLeave, { passive: true });
     window.addEventListener("resize", this.onResize, { passive: true });
     document.addEventListener("visibilitychange", this.onVisibilityChange);
-    this.resize();
+    try {
+      this.resize();
+    } catch (error) {
+      console.info("水墨背景帧缓冲不可用，切换为兼容绘制模式：", error.message);
+      this.activateCanvasFallback();
+      this.resize();
+    }
     this.requestFrame();
   }
 
   readThemeColors() {
     const style = getComputedStyle(document.documentElement);
     return {
-      ink: this.parseColor(style.getPropertyValue("--color-ink-wash").trim(), [76, 85, 80]),
-      lake: this.parseColor(style.getPropertyValue("--color-ink-wash-water").trim(), [128, 148, 141]),
       deepInk: this.parseColor(style.getPropertyValue("--color-ink-wash-deep").trim(), [52, 57, 54])
     };
   }
@@ -218,68 +161,152 @@ export class InkWashBackground {
   parseColor(value, fallback) {
     const match = value.match(/^#([\da-f]{3}|[\da-f]{6})$/i);
     if (!match) return fallback.map((channel) => channel / 255);
-    const hex = match[1].length === 3 ? [...match[1]].map((n) => n + n).join("") : match[1];
+    const hex = match[1].length === 3 ? [...match[1]].map((part) => part + part).join("") : match[1];
     return [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16) / 255);
   }
 
-  updatePointerHalo(event) {
-    const root = document.documentElement;
-    root.style.setProperty("--ink-pointer-x", `${event.clientX / Math.max(window.innerWidth, 1) * 100}%`);
-    root.style.setProperty("--ink-pointer-y", `${event.clientY / Math.max(window.innerHeight, 1) * 100}%`);
-    root.style.setProperty("--ink-pointer-alpha", "1");
-    window.clearTimeout(this.pointerFadeTimer);
-    this.pointerFadeTimer = window.setTimeout(() => root.style.setProperty("--ink-pointer-alpha", "0"), 1800);
+  isPointerExcluded(event) {
+    const editor = document.querySelector(".canvas-container");
+    if (editor?.classList.contains("is-brush-drawing") || editor?.classList.contains("is-pattern-moving")) return true;
+    if (!(event.target instanceof Element)) return false;
+    if (event.target.closest("#umbrellaCanvas, #threeHost canvas")) return false;
+    return Boolean(event.target.closest(".app-header, .controls, .viewer-toolbar, .viewer-fold-control, .viewer-hint, .viewer-error, .canvas-status, .modal-overlay, button, input, select, textarea, [contenteditable='true']"));
+  }
+
+  handlePointer(event, pressed) {
+    if (this.isPointerExcluded(event)) { this.resetPointer(); this.clearTrailHistory(); return; }
+    if (pressed) {
+      this.pointerTarget = null;
+      this.pointerCurrent = null;
+      this.lastRawPointer = null;
+      this.lastSimulatedPointer = null;
+    }
+
+    const now = performance.now();
+    const point = { x: event.clientX / Math.max(window.innerWidth, 1), y: 1 - event.clientY / Math.max(window.innerHeight, 1) };
+    const previous = pressed ? null : this.lastRawPointer;
+    // Keep the reference pen in its fully pressed/thick state without requiring
+    // a mouse button; the background itself remains hover-driven.
+    const width = ACTIVE_TRAIL_WIDTH;
+
+    if (!this.gl && previous) this.appendFallbackSegment(previous, event, width, now);
+    if (this.gl && previous && !this.pointerCurrent && !this.lastSimulatedPointer) {
+      this.pointerCurrent = { x: previous.x, y: previous.y, width: previous.width };
+      this.lastSimulatedPointer = { x: previous.x, y: previous.y };
+    }
+    this.pointerTarget = { ...point, width };
+    this.lastRawPointer = { clientX: event.clientX, clientY: event.clientY, x: point.x, y: point.y, width, time: now };
+    if (this.reducedMotion) this.draw(now);
+  }
+
+  appendFallbackSegment(previous, event, width, now) {
+    const dx = event.clientX - previous.clientX;
+    const dy = event.clientY - previous.clientY;
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 3));
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      this.fallbackPoints.push({
+        x: (previous.clientX + dx * t) / Math.max(window.innerWidth, 1),
+        y: (previous.clientY + dy * t) / Math.max(window.innerHeight, 1),
+        width: previous.width + (width - previous.width) * t,
+        time: now
+      });
+    }
+    this.hasTrailPixels = true;
+    this.fallbackPoints = this.fallbackPoints.slice(-900);
+  }
+
+  resetPointer() {
+    this.pointerTarget = null;
+    this.pointerCurrent = null;
+    this.lastRawPointer = null;
+    this.lastSimulatedPointer = null;
+  }
+
+  clearTrailHistory() {
+    if (!this.hasTrailPixels && this.fallbackPoints.length === 0) return;
+    this.fallbackPoints.length = 0;
+    this.hasTrailPixels = false;
+    if (!this.gl || !this.trailTargets) return;
+    const gl = this.gl;
+    gl.clearColor(0, 0, 0, 0);
+    this.trailTargets.forEach((target) => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    this.trailIndex = 0;
   }
 
   setSceneMode(mode) {
-    this.targetSceneIntensity = mode === "viewing" ? 0.78 : 0.6;
     document.documentElement.dataset.inkScene = mode === "viewing" ? "viewing" : "drawing";
-    if (this.reducedMotion) {
-      this.sceneIntensity = this.targetSceneIntensity;
-      this.draw(0);
-    }
   }
 
-  initializeWebGL() {
+  createProgram(fragmentSource) {
     const gl = this.gl;
     const vertex = this.compileShader(gl.VERTEX_SHADER, VERTEX_SHADER);
-    const fragment = this.compileShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
+    const fragment = this.compileShader(gl.FRAGMENT_SHADER, fragmentSource);
     const program = gl.createProgram();
     gl.attachShader(program, vertex);
     gl.attachShader(program, fragment);
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramInfoLog(program) || "Unable to link ink wash shader");
-    }
     gl.deleteShader(vertex);
     gl.deleteShader(fragment);
-    this.program = program;
-    gl.useProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) || "Unable to link ink wash shader");
+    return program;
+  }
 
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  initializeWebGL() {
+    const gl = this.gl;
+    this.trailProgram = this.createProgram(TRAIL_SHADER);
+    this.backgroundProgram = this.createProgram(BACKGROUND_SHADER);
+    this.noiseTexture = this.createNoiseTexture();
+    this.buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-    this.buffer = buffer;
-    const position = gl.getAttribLocation(program, "aPosition");
-    gl.enableVertexAttribArray(position);
-    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-
-    this.uniforms = {
-      resolution: gl.getUniformLocation(program, "uResolution"),
-      time: gl.getUniformLocation(program, "uTime"),
-      markCount: gl.getUniformLocation(program, "uMarkCount"),
-      marks: gl.getUniformLocation(program, "uMarks[0]"),
-      markAges: gl.getUniformLocation(program, "uMarkAges[0]"),
-      inkColor: gl.getUniformLocation(program, "uInkColor"),
-      lakeColor: gl.getUniformLocation(program, "uLakeColor"),
-      deepInk: gl.getUniformLocation(program, "uDeepInk"),
-      sceneIntensity: gl.getUniformLocation(program, "uSceneIntensity")
-    };
-
+    this.trailUniforms = this.getUniforms(this.trailProgram, ["uPrevious", "uNoise", "uResolution", "uFrom", "uTo", "uSpeed", "uThickness", "uTime", "uWaterQuantity", "uWaterDiffusion", "uPersistence", "uGravity"]);
+    this.backgroundUniforms = this.getUniforms(this.backgroundProgram, ["uTrail"]);
     gl.disable(gl.DEPTH_TEST);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.disable(gl.BLEND);
     gl.clearColor(0, 0, 0, 0);
+  }
+
+  createNoiseTexture() {
+    const gl = this.gl;
+    const size = 128;
+    const pixels = new Uint8Array(size * size * 4);
+    let state = 0x6d2b79f5;
+    for (let offset = 0; offset < pixels.length; offset += 4) {
+      state ^= state << 13;
+      state ^= state >>> 17;
+      state ^= state << 5;
+      pixels[offset] = state & 255;
+      state ^= state << 13;
+      state ^= state >>> 17;
+      state ^= state << 5;
+      pixels[offset + 1] = state & 255;
+      state ^= state << 13;
+      state ^= state >>> 17;
+      state ^= state << 5;
+      pixels[offset + 2] = state & 255;
+      pixels[offset + 3] = 255;
+    }
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    return texture;
+  }
+
+  getUniforms(program, names) {
+    const gl = this.gl;
+    const result = { program, position: gl.getAttribLocation(program, "aPosition") };
+    for (const name of names) result[name] = gl.getUniformLocation(program, name);
+    return result;
   }
 
   compileShader(type, source) {
@@ -295,7 +322,6 @@ export class InkWashBackground {
   }
 
   activateCanvasFallback() {
-    // A canvas that already acquired a WebGL context cannot switch to 2D.
     if (this.gl) {
       const replacement = this.canvas.cloneNode(false);
       this.canvas.replaceWith(replacement);
@@ -305,6 +331,39 @@ export class InkWashBackground {
     this.context = this.canvas.getContext("2d", { alpha: true });
   }
 
+  createTrailTargets() {
+    const gl = this.gl;
+    if (!gl) return;
+    this.deleteTrailTargets();
+    this.trailTargets = [0, 1].map(() => {
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      const framebuffer = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("Ink trail framebuffer is incomplete");
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      return { texture, framebuffer };
+    });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.trailIndex = 0;
+  }
+
+  deleteTrailTargets() {
+    if (!this.gl || !this.trailTargets) return;
+    for (const target of this.trailTargets) {
+      this.gl.deleteTexture(target.texture);
+      this.gl.deleteFramebuffer(target.framebuffer);
+    }
+    this.trailTargets = null;
+  }
+
   resize() {
     const ratio = Math.min(window.devicePixelRatio || 1, 1.35) * 0.62;
     const width = Math.max(1, Math.round(window.innerWidth * ratio));
@@ -312,46 +371,10 @@ export class InkWashBackground {
     if (this.canvas.width === width && this.canvas.height === height) return;
     this.canvas.width = width;
     this.canvas.height = height;
-    if (this.gl) this.gl.viewport(0, 0, width, height);
-  }
-
-  addMark(event, pressed) {
-    if (event.pointerType === "mouse" && event.buttons && !pressed) {
-      this.lastPointer = { x: event.clientX, y: event.clientY };
-      return;
+    if (this.gl) {
+      this.gl.viewport(0, 0, width, height);
+      this.createTrailTargets();
     }
-    const now = performance.now();
-    const x = event.clientX / Math.max(window.innerWidth, 1);
-    const y = 1 - event.clientY / Math.max(window.innerHeight, 1);
-    const previous = pressed ? null : this.lastPointer;
-    const distance = previous
-      ? Math.hypot(event.clientX - previous.x, event.clientY - previous.y)
-      : Number.POSITIVE_INFINITY;
-    if (!pressed && now - this.lastMarkAt < 16 && distance < 4) {
-      this.lastPointer = { x: event.clientX, y: event.clientY };
-      return;
-    }
-
-    const deltaX = previous ? event.clientX - previous.x : 0;
-    const deltaY = previous ? previous.y - event.clientY : 0;
-    const velocityX = deltaX / Math.max(window.innerWidth, 1);
-    const velocityY = deltaY / Math.max(window.innerHeight, 1);
-    // Interpolate faster than the plume radius so quick pointer events overlap.
-    const steps = previous ? Math.min(MARK_LIMIT, Math.max(1, Math.ceil(distance / MARK_SPACING))) : 1;
-    for (let step = 1; step <= steps; step++) {
-      const progress = step / steps;
-      this.marks.unshift({
-        x: previous ? (previous.x + deltaX * progress) / Math.max(window.innerWidth, 1) : x,
-        y: previous ? 1 - (previous.y - deltaY * progress) / Math.max(window.innerHeight, 1) : y,
-        vx: velocityX,
-        vy: velocityY,
-        age: 0
-      });
-    }
-    this.marks.length = Math.min(this.marks.length, MARK_LIMIT);
-    this.lastPointer = { x: event.clientX, y: event.clientY };
-    this.lastMarkAt = now;
-    if (this.reducedMotion) this.draw(0);
   }
 
   requestFrame() {
@@ -366,78 +389,105 @@ export class InkWashBackground {
   draw(now) {
     const frameInterval = 1000 / TARGET_FPS;
     if (!this.reducedMotion && this.lastFrameAt && now - this.lastFrameAt < frameInterval) return;
-    const elapsed = this.reducedMotion ? 0 : (now - this.startedAt) / 1000;
-    const ageStep = this.lastFrameAt ? Math.max(0, (now - this.lastFrameAt) / 1000) : 0;
+    const dt = this.lastFrameAt ? Math.min(0.04, Math.max(0, (now - this.lastFrameAt) / 1000)) : 1 / TARGET_FPS;
     this.lastFrameAt = now;
-    this.marks.forEach((mark) => { mark.age += ageStep; });
-    this.marks = this.marks.filter((mark) => mark.age < MARK_LIFETIME);
-    this.sceneIntensity += (this.targetSceneIntensity - this.sceneIntensity) * 0.045;
-    if (this.gl) this.drawWebGL(elapsed);
-    else this.drawCanvasFallback(elapsed);
+    const elapsed = (now - this.startedAt) / 1000;
+    if (this.gl) this.drawWebGL(elapsed, dt, now);
+    else this.drawCanvasFallback(elapsed, now);
   }
 
-  drawWebGL(time) {
+  bindQuad(programInfo) {
     const gl = this.gl;
-    gl.useProgram(this.program);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.uniform2f(this.uniforms.resolution, this.canvas.width, this.canvas.height);
-    gl.uniform1f(this.uniforms.time, time);
-    gl.uniform1f(this.uniforms.sceneIntensity, this.sceneIntensity);
-    gl.uniform1i(this.uniforms.markCount, this.marks.length);
-    gl.uniform3fv(this.uniforms.inkColor, this.colors.ink);
-    gl.uniform3fv(this.uniforms.lakeColor, this.colors.lake);
-    gl.uniform3fv(this.uniforms.deepInk, this.colors.deepInk);
+    gl.useProgram(programInfo.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    gl.enableVertexAttribArray(programInfo.position);
+    gl.vertexAttribPointer(programInfo.position, 2, gl.FLOAT, false, 0, 0);
+  }
 
-    const marks = new Float32Array(MARK_LIMIT * 4);
-    const ages = new Float32Array(MARK_LIMIT);
-    this.marks.forEach((mark, index) => {
-      const offset = index * 4;
-      marks[offset] = mark.x;
-      marks[offset + 1] = mark.y;
-      marks[offset + 2] = mark.vx;
-      marks[offset + 3] = mark.vy;
-      ages[index] = mark.age;
-    });
-    gl.uniform4fv(this.uniforms.marks, marks);
-    gl.uniform1fv(this.uniforms.markAges, ages);
+  drawWebGL(time, dt, now) {
+    const gl = this.gl;
+    if (!this.trailTargets) this.createTrailTargets();
+    if (!this.trailTargets) return;
+
+    const target = this.pointerTarget;
+    if (target) {
+      if (!this.pointerCurrent) this.pointerCurrent = { ...target };
+      else {
+        const follow = Math.min(1, dt * 5);
+        this.pointerCurrent.x += (target.x - this.pointerCurrent.x) * follow;
+        this.pointerCurrent.y += (target.y - this.pointerCurrent.y) * follow;
+        this.pointerCurrent.width += (target.width - this.pointerCurrent.width) * follow;
+      }
+    }
+    const to = this.pointerCurrent ?? target ?? { x: 0.5, y: 0.5, width: BASE_TRAIL_WIDTH };
+    const from = this.lastSimulatedPointer ?? to;
+    const aspect = this.canvas.width / Math.max(this.canvas.height, 1);
+    const movement = Math.hypot((to.x - from.x) * aspect, to.y - from.y);
+    // Inject only while the smoothed cursor advances. This mirrors the source
+    // pen's speed gate and stops a stationary endpoint from being stamped each
+    // frame into a dark circular blot.
+    const activeSpeed = target && movement > 0.000008 ? Math.min(0.0035, movement) : 0;
+    const nextIndex = 1 - this.trailIndex;
+    const previousTarget = this.trailTargets[this.trailIndex];
+    const nextTarget = this.trailTargets[nextIndex];
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, nextTarget.framebuffer);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const trail = this.trailUniforms;
+    this.bindQuad(trail);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, previousTarget.texture);
+    gl.uniform1i(trail.uPrevious, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.noiseTexture);
+    gl.uniform1i(trail.uNoise, 1);
+    gl.uniform2f(trail.uResolution, this.canvas.width, this.canvas.height);
+    gl.uniform2f(trail.uFrom, from.x, from.y);
+    gl.uniform2f(trail.uTo, to.x, to.y);
+    gl.uniform1f(trail.uSpeed, activeSpeed);
+    gl.uniform1f(trail.uThickness, to.width ?? BASE_TRAIL_WIDTH);
+    gl.uniform1f(trail.uTime, time);
+    gl.uniform1f(trail.uWaterQuantity, 0.3);
+    gl.uniform1f(trail.uWaterDiffusion, 0.1);
+    gl.uniform1f(trail.uPersistence, Math.pow(0.98, dt * 10));
+    gl.uniform1f(trail.uGravity, 0.5 * dt);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (activeSpeed > 0) this.hasTrailPixels = true;
+    this.trailIndex = nextIndex;
+    if (target) this.lastSimulatedPointer = { x: to.x, y: to.y };
+    else this.lastSimulatedPointer = null;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const background = this.backgroundUniforms;
+    this.bindQuad(background);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.trailTargets[this.trailIndex].texture);
+    gl.uniform1i(background.uTrail, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
-  drawCanvasFallback(time) {
+  drawCanvasFallback(_time, now) {
     const ctx = this.context;
     if (!ctx) return;
     const { width, height } = this.canvas;
     ctx.clearRect(0, 0, width, height);
-    const colors = this.colors;
-    const rgb = (color) => color.map((channel) => Math.round(channel * 255)).join(",");
-    ctx.save();
-    ctx.globalAlpha = this.sceneIntensity;
-    ctx.filter = `blur(${Math.max(12, width * 0.009)}px)`;
-    for (let i = 0; i < 4; i++) {
-      const phase = time * 0.035 + i * 1.71;
-      const x = (0.18 + ((i * 0.29) % 0.7) + Math.sin(phase) * 0.06) * width;
-      const y = (0.2 + ((i * 0.37) % 0.65) + Math.cos(phase * 0.8) * 0.05) * height;
-      const radius = Math.min(width, height) * (0.1 + (i % 2) * 0.035);
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      gradient.addColorStop(0, `rgba(${rgb(colors.ink)},0.06)`);
-      gradient.addColorStop(0.54, `rgba(${rgb(colors.lake)},0.035)`);
-      gradient.addColorStop(1, `rgba(${rgb(colors.ink)},0)`);
-      ctx.fillStyle = gradient;
-      ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    const ink = this.colors.deepInk.map((channel) => Math.round(channel * 255));
+    this.fallbackPoints = this.fallbackPoints.filter((point) => now - point.time < TRAIL_LIFETIME * 1000);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (let i = 1; i < this.fallbackPoints.length; i++) {
+      const a = this.fallbackPoints[i - 1];
+      const b = this.fallbackPoints[i];
+      const age = (now - b.time) / 1000;
+      ctx.strokeStyle = `rgba(${ink.join(",")},${Math.exp(-age * 0.58) * 0.76})`;
+      ctx.lineWidth = Math.max(1.2, Math.min(width, height) * b.width * 2);
+      ctx.beginPath();
+      ctx.moveTo(a.x * width, a.y * height);
+      ctx.lineTo(b.x * width, b.y * height);
+      ctx.stroke();
     }
-    ctx.globalAlpha = 0.62 + this.sceneIntensity * 0.38;
-    for (const mark of this.marks) {
-      const x = mark.x * width;
-      const y = (1 - mark.y) * height;
-      const radius = Math.min(width, height) * (0.026 + (1 - Math.exp(-mark.age * 1.55)) * 0.014);
-      const alpha = Math.exp(-mark.age * 1.1) * 0.34;
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      gradient.addColorStop(0, `rgba(${rgb(colors.ink)},${alpha})`);
-      gradient.addColorStop(0.58, `rgba(${rgb(colors.lake)},${alpha * 0.5})`);
-      gradient.addColorStop(1, `rgba(${rgb(colors.ink)},0)`);
-      ctx.fillStyle = gradient;
-      ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-    }
-    ctx.restore();
   }
 }

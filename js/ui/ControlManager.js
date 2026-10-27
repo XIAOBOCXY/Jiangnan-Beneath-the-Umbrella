@@ -4,8 +4,8 @@ import { getMotifAsset, getMotifAssetURL, MOTIF_CATEGORIES, MOTIF_LIBRARY } from
 export class ControlManager {
   constructor() {
     const ids = [
-      "colorPicker", "brushSize", "opacity", "segments", "segmentTicks", "mirror",
-      "brushSizeValue", "opacityValue", "segmentsValue", "clearBtn", "saveBtn", "templateBtn", "randomBtn", "shareBtn", "designName",
+      "colorPicker", "brushSize", "opacity", "segments", "mirror",
+      "brushSizeValue", "opacityValue", "segmentsValue", "clearBtn", "saveBtn", "templateBtn", "randomBtn",
       "undoBtn", "redoBtn", "repeatBtn", "deletePatternBtn", "repeatCount", "repeatRadius", "patternScale", "patternRotation",
       "repeatCountValue", "repeatRadiusValue", "patternScaleValue", "patternRotationValue", "guideToggle", "zoneSnap", "brushTools", "patternTools",
       "patternCategories", "patternCarousel"
@@ -16,38 +16,45 @@ export class ControlManager {
     this.pattern = "lotus";
     this.activePatternCategory = getMotifAsset(this.pattern)?.categoryId || MOTIF_CATEGORIES[0].id;
     this.assetStates = new Map(MOTIF_LIBRARY.map((asset) => [asset.id, "loading"]));
-    this.createSegmentTicks();
     this.rangeInputs = [...document.querySelectorAll('input[type="range"]')];
+    this.enhanceSteppedRanges();
     this.rangeInputs.forEach((input) => {
       input.addEventListener("input", () => this.updateRangeProgress(input));
       input.addEventListener("change", () => this.updateRangeProgress(input));
     });
     this.renderPatternCategories();
     this.renderPatternCards();
+    this.enablePatternCategoryDrag();
     this.updateValueDisplays();
     this.updateSwatches();
     this.updatePatternSelection();
     this.updateFabricStyles();
   }
 
-  createSegmentTicks() {
-    const minimum = Number(this.elements.segments.min), maximum = Number(this.elements.segments.max);
-    this.elements.segmentTicks.replaceChildren();
-    // 范围保留完整步进；刻度只提示起点、中点和终点，避免 1–14 全部挤在滑轨下。
-    const midpoint = Math.round((minimum + maximum) / 2);
-    const options = [...new Set([minimum, midpoint, maximum])];
-    options.forEach((value) => {
-      const tick = document.createElement("button");
-      tick.type = "button"; tick.className = "range-tick"; tick.dataset.value = String(value);
-      tick.style.left = `${(value - minimum) / (maximum - minimum) * 100}%`;
-      tick.setAttribute("aria-label", `设为 ${value} 重`); tick.title = `${value} 重`;
-      const label = document.createElement("span"); label.textContent = String(value); tick.append(label);
-      tick.addEventListener("click", () => {
-        this.elements.segments.value = String(value);
-        this.elements.segments.dispatchEvent(new Event("input", { bubbles: true }));
-        this.elements.segments.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-      this.elements.segmentTicks.append(tick);
+  enhanceSteppedRanges() {
+    this.rangeInputs.forEach((input) => {
+      const minimum = Number(input.min) || 0;
+      const maximum = Number(input.max) || 100;
+      const step = Number(input.step) || 1;
+      const count = Math.ceil((maximum - minimum) / step - 1e-9) + 1;
+      if (count > 16) return; // Keep markers for short stepped controls, avoid crowding longer ranges.
+
+      const wrapper = document.createElement("span");
+      wrapper.className = "range-control";
+      input.parentElement.insertBefore(wrapper, input);
+      wrapper.append(input);
+      const ticks = document.createElement("span");
+      ticks.className = "range-ticks";
+      ticks.setAttribute("aria-hidden", "true");
+      for (let index = 0; index < count; index += 1) {
+        const dot = document.createElement("span");
+        dot.className = "range-tick";
+        const value = index === count - 1 ? maximum : minimum + index * step;
+        dot.dataset.value = String(value);
+        ticks.append(dot);
+      }
+      wrapper.append(ticks);
+      input.dataset.rangeTicks = "true";
     });
   }
 
@@ -67,6 +74,54 @@ export class ControlManager {
       button.addEventListener("click", () => this.setPatternCategory(category.id));
       container.append(button);
     });
+  }
+
+  // Let desktop users drag the category strip; touch devices keep native panning.
+  enablePatternCategoryDrag() {
+    const rail = this.elements.patternCategories;
+    if (!rail) return;
+
+    let pointerId = null;
+    let startX = 0;
+    let startScrollLeft = 0;
+    let didDrag = false;
+    let suppressClick = false;
+
+    rail.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "mouse" || event.button !== 0) return;
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startScrollLeft = rail.scrollLeft;
+      didDrag = false;
+    });
+
+    window.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== pointerId) return;
+      const deltaX = event.clientX - startX;
+      if (Math.abs(deltaX) > 4) {
+        didDrag = true;
+        rail.classList.add("is-dragging");
+        rail.scrollLeft = startScrollLeft - deltaX;
+      }
+    });
+
+    const finishDrag = (event) => {
+      if (event.pointerId !== pointerId) return;
+      pointerId = null;
+      rail.classList.remove("is-dragging");
+      if (didDrag) {
+        suppressClick = true;
+        window.setTimeout(() => { suppressClick = false; }, 0);
+      }
+    };
+    window.addEventListener("pointerup", finishDrag);
+    window.addEventListener("pointercancel", finishDrag);
+    rail.addEventListener("click", (event) => {
+      if (!suppressClick) return;
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClick = false;
+    }, true);
   }
 
   setPatternCategory(categoryId) {
@@ -137,10 +192,10 @@ export class ControlManager {
     this.elements.brushSizeValue.textContent = this.elements.brushSize.value;
     this.elements.opacityValue.textContent = `${this.elements.opacity.value}%`;
     this.elements.segmentsValue.textContent = `${this.elements.segments.value} 重`;
-    const minimum = Number(this.elements.segments.min), maximum = Number(this.elements.segments.max);
-    const progress = maximum === minimum ? 100 : (Number(this.elements.segments.value) - minimum) / (maximum - minimum) * 100;
-    this.elements.segments.style.setProperty("--range-progress", `${progress}%`);
-    this.elements.segmentTicks.querySelectorAll("[data-value]").forEach((tick) => tick.classList.toggle("is-selected", tick.dataset.value === this.elements.segments.value));
+    const mirrorDisabled = Number(this.elements.segments.value) <= 1;
+    this.elements.mirror.disabled = mirrorDisabled;
+    this.elements.mirror.closest(".check-row")?.classList.toggle("is-disabled", mirrorDisabled);
+    this.elements.mirror.title = mirrorDisabled ? "1 重为单笔绘制，镜像仅在重复数大于 1 时可用" : "镜像笔迹";
     this.updatePatternValues();
     this.rangeInputs?.forEach((input) => this.updateRangeProgress(input));
   }
@@ -152,6 +207,10 @@ export class ControlManager {
     const value = Number(input.value) || 0;
     const progress = maximum === minimum ? 100 : (value - minimum) / (maximum - minimum) * 100;
     input.style.setProperty("--range-progress", `${Math.max(0, Math.min(100, progress))}%`);
+    input.closest(".range-control")?.querySelectorAll(".range-tick").forEach((dot) => {
+      dot.classList.toggle("is-passed", Number(dot.dataset.value) <= value);
+      dot.classList.toggle("is-current", Number(dot.dataset.value) === value);
+    });
   }
 
   updatePatternValues() {

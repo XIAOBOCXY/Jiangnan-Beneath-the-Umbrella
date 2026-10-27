@@ -15,7 +15,7 @@ export class CanvasManager {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.dpr = 1;
-    this.viewZoom = 1;
+    this.viewZoom = 1.12;
     this.viewRotation = 0;
     this.viewPanX = 0;
     this.viewPanY = 0;
@@ -32,10 +32,10 @@ export class CanvasManager {
     this.clothImage = new Image();
     this.clothImage.onload = () => this.renderBase(this.lastSettings);
     this.clothImage.src = CLOTH_SOURCE;
-    this.pointerLight = null;
     this.renderBase(DEFAULT_SETTINGS);
     this.resizeObserver = new ResizeObserver(() => this.updatePixelRatio());
     this.resizeObserver.observe(canvas);
+    this.updateZoomLayout();
     window.addEventListener("resize", () => {
       this.updatePixelRatio();
       this.updateZoomLayout();
@@ -43,7 +43,7 @@ export class CanvasManager {
   }
 
   createLayers() {
-    ["base", "art", "pattern", "relief", "atmosphere", "light", "structure", "sheen", "overlay"].forEach((name) => {
+    ["base", "art", "pattern", "relief", "atmosphere", "structure", "sheen", "overlay"].forEach((name) => {
       const canvasLayer = document.createElement("canvas");
       const ctx = canvasLayer.getContext("2d");
       this.layers[name] = { canvas: canvasLayer, ctx };
@@ -103,6 +103,8 @@ export class CanvasManager {
   }
 
   setViewTransform(zoom = this.viewZoom, rotation = this.viewRotation, panX = this.viewPanX, panY = this.viewPanY) {
+    const stage = this.canvas.closest(".canvas-stage");
+    const before = stage?.getBoundingClientRect();
     // Detailed inspection extends beyond the original square editor viewport.
     this.viewZoom = Math.max(0.6, Math.min(10, zoom));
     this.viewRotation = rotation;
@@ -111,6 +113,17 @@ export class CanvasManager {
     const viewport = document.getElementById("canvasArtworkViewport");
     if (viewport) viewport.style.transform = `translate(${this.viewPanX}px, ${this.viewPanY}px) scale(${this.viewZoom}) rotate(${this.viewRotation}rad)`;
     this.updateZoomLayout();
+    // Reserving mobile scroll space can move the square stage in document
+    // layout. Counter that layout shift in the canvas pan so the artwork's
+    // screen-space center stays stable across repeated zoom in/out cycles.
+    const after = stage?.getBoundingClientRect();
+    if (before && after) {
+      const centerShiftY = (after.top + after.height * 0.5) - (before.top + before.height * 0.5);
+      if (Math.abs(centerShiftY) > 0.1) {
+        this.viewPanY -= centerShiftY;
+        if (viewport) viewport.style.transform = `translate(${this.viewPanX}px, ${this.viewPanY}px) scale(${this.viewZoom}) rotate(${this.viewRotation}rad)`;
+      }
+    }
   }
 
   updateZoomLayout() {
@@ -128,8 +141,9 @@ export class CanvasManager {
       + Math.abs(Math.sin(this.viewRotation)) * rect.width
     );
     const extra = Math.max(0, (verticalSpan - rect.height) * 0.5);
-    stage.style.setProperty("--zoom-reserve-top", `${Math.max(0, extra - this.viewPanY)}px`);
-    stage.style.setProperty("--zoom-reserve-bottom", `${Math.max(0, extra + this.viewPanY)}px`);
+    // Symmetric reserve prevents the stage center from drifting with panY.
+    stage.style.setProperty("--zoom-reserve-top", `${extra}px`);
+    stage.style.setProperty("--zoom-reserve-bottom", `${extra}px`);
   }
 
   containsPoint(point) { return Math.hypot(point.x - CENTER, point.y - CENTER) <= ART_RADIUS - 2; }
@@ -358,15 +372,6 @@ export class CanvasManager {
     ctx2.restore();
   }
 
-  setPointerLight(point) { this.pointerLight = point; this.renderLight(); this.renderScene(); }
-  renderLight() {
-    const ctx = this.lightCtx; ctx.clearRect(0, 0, SIZE, SIZE);
-    if (!this.pointerLight) return;
-    const { x, y } = this.pointerLight; const gradient = ctx.createRadialGradient(x, y, 0, x, y, 138);
-    gradient.addColorStop(0, "rgba(255,255,255,.16)"); gradient.addColorStop(.5, "rgba(255,255,255,.055)"); gradient.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.save(); ctx.beginPath(); ctx.arc(CENTER, CENTER, CANOPY_RADIUS - 6, 0, Math.PI * 2); ctx.clip(); ctx.fillStyle = gradient; ctx.fillRect(0, 0, SIZE, SIZE); ctx.restore();
-  }
-
   renderScene(includeOverlay = true) {
     this.ctx.clearRect(0, 0, SIZE, SIZE);
     this.ctx.drawImage(this.baseLayer, 0, 0, SIZE, SIZE);
@@ -376,8 +381,6 @@ export class CanvasManager {
     this.ctx.save(); this.ctx.globalCompositeOperation = "multiply"; this.ctx.globalAlpha = .5;
     this.ctx.drawImage(this.reliefLayer, 0, 0, SIZE, SIZE);
     this.ctx.globalAlpha = .56; this.ctx.drawImage(this.atmosphereLayer, 0, 0, SIZE, SIZE); this.ctx.restore();
-    this.ctx.save(); this.ctx.globalCompositeOperation = "screen"; this.ctx.globalAlpha = .72;
-    this.ctx.drawImage(this.lightLayer, 0, 0, SIZE, SIZE); this.ctx.restore();
     this.ctx.drawImage(this.structureLayer, 0, 0, SIZE, SIZE);
     this.ctx.save(); this.ctx.globalCompositeOperation = "screen"; this.ctx.globalAlpha = .46;
     this.ctx.drawImage(this.sheenLayer, 0, 0, SIZE, SIZE); this.ctx.restore();
