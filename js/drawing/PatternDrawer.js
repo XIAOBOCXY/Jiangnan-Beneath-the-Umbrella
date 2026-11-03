@@ -1,4 +1,4 @@
-import { getMotifAssetURL, MOTIF_CATEGORIES, MOTIF_FORMATS, MOTIF_LIBRARY } from "./MotifLibrary.js";
+import { getMotifAssetURL, MOTIF_CATEGORIES, MOTIF_FORMATS, MOTIF_LIBRARY } from "./MotifLibrary.js?v=20261031-studio-silk-v8";
 
 const VALID_ZONES = new Set(["伞心", "中部", "外圈", "伞缘"]);
 
@@ -6,6 +6,7 @@ const validateAsset = (asset) => {
   if (!asset?.id || !asset?.src || !asset?.name) return "素材缺少 id、名称或文件路径";
   if (!MOTIF_FORMATS.includes(asset.format)) return `不支持的素材格式：${asset.format}`;
   if (!MOTIF_CATEGORIES.some((category) => category.id === asset.categoryId)) return "素材分类未注册";
+  if (!asset.visualSource || !asset.sourceLinks?.length) return "素材缺少可核验的实物来源";
   if (!Number.isFinite(asset.recommendedSize) || asset.recommendedSize <= 0) return "推荐尺寸必须是正数";
   if (!Number.isInteger(asset.defaultRepeatCount) || asset.defaultRepeatCount < 1) return "默认重复数必须是正整数";
   if (!Array.isArray(asset.applicableZones) || asset.applicableZones.length === 0 || asset.applicableZones.some((zone) => !VALID_ZONES.has(zone))) return "素材适用区域配置无效";
@@ -71,7 +72,7 @@ export class PatternDrawer {
 
   getAsset(id) { return this.assets.get(id) || null; }
   getAssets(categoryId = null) {
-    return [...this.assets.values()].filter((asset) => !categoryId || asset.categoryId === categoryId);
+    return [...this.assets.values()].filter((asset) => !asset.legacy && (!categoryId || asset.categoryId === categoryId));
   }
   getAssetState(id) { return this.assetStates.get(id) || "loading"; }
   getAssetError(id) { return this.assetErrors.get(id) || ""; }

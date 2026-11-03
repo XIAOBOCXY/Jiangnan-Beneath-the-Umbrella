@@ -1,56 +1,32 @@
 # 纹样资源库
 
-纹样资源从 `js/drawing/MotifLibrary.js` 注册。Canvas 2D 读取独立图像并保留透明通道、原始宽高比；Three.js 继续使用作品合成后的 CanvasTexture。新增素材不需要改绘画器或 3D 渲染代码。
+绘制工坊当前提供 12 枚有实物照片依据的纹样：9 枚透明 SVG 复绘和 3 枚透明 PNG 绘制稿。PNG 与 SVG 都保留透明通道和原始宽高比；在 2D、3D 预览中会叠入伞面的织纹、明暗和柔和丝光。
 
-## 分类与现有素材
+## 当前分类
 
-| 分类 | 素材 | 文件格式 | 推荐用途 |
-| --- | --- | --- | --- |
-| 主体绘画 | 雷峰湖山 | PNG | 伞心单幅主体 |
-| 花卉植物 | 西湖荷花、风竹 | PNG | 主体或中部/外圈装饰 |
-| 江南元素 | 锦鲤戏水 | PNG | 中部/外圈点景 |
-| 传统纹饰 | 如意云纹 | PNG | 装饰纹样，可重复排列 |
-| 伞缘边饰 | 西湖水纹 | SVG | 当前线饰研究稿；后续可替换为透明 PNG/WebP |
+| 分类 | 可选纹样 | 格式 |
+| --- | --- | --- |
+| 湖山景致 | 三潭印月、烟霞湖山、月照湖山 | SVG、PNG |
+| 花卉植物 | 花鸟枝影、绸面繁花、花团锦簇、花鸟春枝 | SVG、PNG |
+| 江南风物 | 湖桥月色 | SVG |
+| 戏曲人物 | 戏曲人物、戏曲脸谱 | SVG、PNG |
+| 传统纹饰 | 回云卷草 | SVG |
+| 伞缘边饰 | 繁花伞缘 | SVG |
 
-现有五张 PNG 为 1254 × 1254、RGBA 透明图像；素材文件夹里已有的其他 SVG 也全部保留，只是不自动作为主素材注册。现有图像按项目中的草稿素材管理，来源与授权信息尚未记录，不应标注为正式工笔成稿或非遗原作。
+## 纹样出处
 
-## 元数据字段
+每个可选纹样都在 `js/drawing/MotifLibrary.js` 登记了实物照片文件名、参考论文及页码、绘制说明和参考链接。网页当前只显示纹样解释；图像出处仍保留在元数据与 `assets/heritage/papers/SOURCES.md`，方便核对。
 
-每个条目需要包含：
+这些文件是以真实西湖绸伞照片中的题材和构图为依据重新绘制的体验素材，不是非遗原作，也不宣称是传承人原稿或照片的精确复刻。PNG 是透明栅格绘制稿，SVG 是透明矢量复绘；两种格式都指向具体伞面照片，不使用无来源的装饰稿。
 
-- `id`：稳定 ID，作品数据依赖它；替换文件时不要改已有 ID。
-- `name`、`categoryId`：显示名称与分类 ID。
-- `src`、`format`：相对 `MotifLibrary.js` 的文件路径与 MIME 格式。支持 `image/png`、`image/webp`、`image/svg+xml`。
-- `recommendedSize`：Canvas 逻辑单位中的建议尺寸。
-- `defaultRepeatCount`：主体绘画填 `1`；装饰纹样填建议环形数量。纹样放置时始终先作为单个对象，用户点击“环形重复”后才按此数量预填。
-- `defaultPlacement`：目前为 `single`。
-- `applicableZones`：允许放置或自动吸附的区域，使用 `伞心`、`中部`、`外圈`、`伞缘`。
-- `role`、`status`、`description`：用途、资源成熟度与备注。
+背景资料：
 
-## 添加 Procreate 素材
+- [湖北美术学院湖北省非物质文化遗产研究中心《江南民间手工艺调查——以西湖绸伞为例》](https://fyzx.hifa.edu.cn/info/1028/1166.htm)
+- [中国非物质文化遗产数字博物馆“伞制作技艺（西湖绸伞）”档案](https://www.ihchina.cn/project_details/14578/)
+- [杭州网：中国伞博物馆藏“烟江秋意”西湖绸伞介绍](https://ori.hangzhou.com.cn/ornews/content/2023-01/20/content_8453311.htm)
 
-1. 导出透明背景 PNG 或支持 alpha 的 WebP，并把文件复制到 `assets/motifs/`。保留主体周围合理的透明留白。
-2. 在 `MotifLibrary.js` 中为它分配新的稳定 `id`，填写名称、分类、格式、推荐尺寸、默认重复数和适用区域。
-3. 若是新分类，在 `MOTIF_CATEGORIES` 增加 `{ id, name }`；纹样分类页签和卡片会自动生成。
-4. 刷新页面。文件成功加载后卡片可用；路径失效或配置错误时卡片会标出不可用状态。
+## 稳定 ID 与兼容
 
-资源路径示例：
+素材注册入口是 `MotifLibrary.js`。作品保存稳定的 `patternId`，替换图像时不要改已有 ID。六个早期作品 ID 保留为隐藏兼容别名；它们不会出现在新作品的素材卡片或随机灵感中。
 
-```js
-{
-  id: "new-lotus-study",
-  name: "并蒂莲",
-  categoryId: "flora",
-  src: "../../assets/motifs/twin-lotus.webp",
-  format: "image/webp",
-  recommendedSize: 156,
-  defaultRepeatCount: 8,
-  defaultPlacement: "single",
-  applicableZones: ["伞心", "中部"],
-  role: "花卉植物",
-  status: "procreate-final",
-  description: "透明 WebP 工笔成稿。"
-}
-```
-
-渲染尺寸根据图像原始宽高比计算，不会强制拉伸成正方形。高分辨率成稿可直接替换同一 ID 对应的 `src`，既有作品对象仍然能找到该素材。
+新增素材时登记 `id`、`name`、`categoryId`、`src`、`format`、建议尺寸、适用区域以及 `visualSource` 和 `sourceLinks`。新增图片应来自可核验的实物伞照片，并注明文件名、来源和页码；缺少出处的图稿不进入可选素材库。

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 360" role="img" aria-label="绸伞花枝与鸟影实物纹样的矢量复绘">
+  <g fill="none" stroke="#385d48" stroke-width="9" stroke-linecap="round">
+    <path d="M58 304Q146 244 183 180T353 52"/><path d="M168 199Q121 166 82 149"/><path d="M213 155Q254 155 289 137"/><path d="M264 107Q236 76 226 44"/>
+  </g>
+  <g fill="#5f8461" stroke="#385d48" stroke-width="3">
+    <path d="M102 169Q69 111 126 124Q148 149 102 169Z"/><path d="M141 228Q93 227 115 184Q147 182 141 228Z"/>
+    <path d="M242 158Q260 112 297 137Q281 168 242 158Z"/><path d="M275 129Q270 82 312 88Q315 123 275 129Z"/>
+    <path d="M239 88Q198 71 215 42Q248 47 239 88Z"/><path d="M321 91Q346 63 364 90Q348 114 321 91Z"/>
+  </g>
+  <g fill="#e6a2a0" stroke="#a9524f" stroke-width="3">
+    <g transform="translate(179 180)"><ellipse cy="-19" rx="11" ry="19"/><ellipse cx="19" cy="-6" rx="11" ry="19" transform="rotate(68 19 -6)"/><ellipse cx="12" cy="16" rx="11" ry="19" transform="rotate(140 12 16)"/><ellipse cx="-12" cy="16" rx="11" ry="19" transform="rotate(220 -12 16)"/><ellipse cx="-19" cy="-6" rx="11" ry="19" transform="rotate(292 -19 -6)"/><circle r="8" fill="#d5a44b"/></g>
+    <g transform="translate(345 60) scale(.8)"><ellipse cy="-19" rx="11" ry="19"/><ellipse cx="19" cy="-6" rx="11" ry="19" transform="rotate(68 19 -6)"/><ellipse cx="12" cy="16" rx="11" ry="19" transform="rotate(140 12 16)"/><ellipse cx="-12" cy="16" rx="11" ry="19" transform="rotate(220 -12 16)"/><ellipse cx="-19" cy="-6" rx="11" ry="19" transform="rotate(292 -19 -6)"/><circle r="8" fill="#d5a44b"/></g>
+    <g transform="translate(90 145) scale(.62)"><ellipse cy="-19" rx="11" ry="19"/><ellipse cx="19" cy="-6" rx="11" ry="19" transform="rotate(68 19 -6)"/><ellipse cx="12" cy="16" rx="11" ry="19" transform="rotate(140 12 16)"/><ellipse cx="-12" cy="16" rx="11" ry="19" transform="rotate(220 -12 16)"/><ellipse cx="-19" cy="-6" rx="11" ry="19" transform="rotate(292 -19 -6)"/><circle r="8" fill="#d5a44b"/></g>
+  </g>
+  <g fill="#416d82" stroke="#263f3a" stroke-width="4" stroke-linejoin="round">
+    <path d="M208 267q28-34 63-20l28 14-29 4-9 18-11-15-25 11-9 26-9-11 4-21-21 8 10-14Z"/>
+    <path d="M284 224q23-28 52-14l22 12-23 3-7 15-10-12-20 9-7 22-8-9 3-18-17 6 8-14Z" transform="scale(.84) translate(75 58)"/>
+  </g>
+  <g fill="#d5a44b"><circle cx="214" cy="269" r="4"/><circle cx="285" cy="225" r="4"/></g>
+</svg>

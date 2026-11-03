@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 300" role="img" aria-label="暖色绸伞湖山与岸边建筑纹样的矢量复绘">
+  <circle cx="312" cy="74" r="38" fill="#d8925f" opacity=".9"/>
+  <path d="M36 168Q88 115 139 148Q184 89 233 138Q286 93 333 145Q371 121 405 153L405 214H36Z" fill="#6f8070"/>
+  <path d="M47 178Q104 146 151 176Q208 133 254 169Q316 128 394 170" fill="none" stroke="#364f48" stroke-width="5"/>
+  <path d="M53 207Q106 187 166 204T286 204T401 204V249H53Z" fill="#718e88" opacity=".84"/>
+  <g fill="#b9694f" stroke="#344d45" stroke-width="3" stroke-linejoin="round">
+    <path d="M91 162h55v40H91z"/><path d="M83 162l35-23 36 23Z"/><path d="M102 149l16-22 18 22Z"/>
+    <path d="M148 168h45v35h-45z"/><path d="M140 168l30-19 31 19Z"/>
+  </g>
+  <g fill="#f0d4a1"><rect x="103" y="174" width="10" height="13" rx="2"/><rect x="124" y="174" width="10" height="13" rx="2"/><rect x="160" y="177" width="9" height="12" rx="2"/></g>
+  <path d="M58 229q29-12 58 0t58 0 58 0 58 0 58 0 58 0" fill="none" stroke="#e3c289" stroke-width="4" stroke-linecap="round"/>
+  <path d="M73 248q23-8 46 0t46 0 46 0 46 0 46 0 46 0 46 0" fill="none" stroke="#3e6662" stroke-width="3" stroke-linecap="round"/>
+</svg>
