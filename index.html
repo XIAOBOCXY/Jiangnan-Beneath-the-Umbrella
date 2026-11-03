@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f5f1e8">
-  <meta name="description" content="伞下江南 · 西湖绸伞数字共创。">
-  <title>伞下江南 | Jiangnan Beneath the Umbrella</title>
+  <meta name="description" content="西湖绸伞 · 沉浸式非遗数字展馆。">
+  <title>西湖绸伞 · 沉浸式非遗数字展馆</title>
   <script type="importmap">
     {
       "imports": {
@@ -14,10 +14,11 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261027-uiverse-webawesome-v21">
+  <link rel="preload" href="assets/fonts/AlimamaDaoLiTi.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/ChillHuoKai.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css?v=20261101-silk-craft-v3">
 </head>
 <body>
-  <canvas id="inkWashBackground" class="ink-wash-background" aria-hidden="true"></canvas>
   <div class="paper-grain" aria-hidden="true"></div>
   <svg class="ambient-landscape" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true">
     <defs>
@@ -35,6 +36,11 @@
         <stop offset=".72" stop-color="#F5F1E8" stop-opacity=".13" />
         <stop offset="1" stop-color="#F5F1E8" stop-opacity="0" />
       </linearGradient>
+      <linearGradient id="lakeSurfaceWash" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#80948D" stop-opacity="0" />
+        <stop offset=".3" stop-color="#80948D" stop-opacity=".075" />
+        <stop offset="1" stop-color="#80948D" stop-opacity=".025" />
+      </linearGradient>
       <filter id="softLakeEdge" x="-5%" y="-20%" width="110%" height="140%">
         <feGaussianBlur stdDeviation="5.2" />
       </filter>
@@ -47,38 +53,322 @@
         </feTurbulence>
         <feDisplacementMap in="SourceGraphic" in2="waveNoise" scale="6.5" xChannelSelector="R" yChannelSelector="G" />
       </filter>
+      <filter id="softWaterTexture" x="-5%" y="-12%" width="110%" height="124%">
+        <feTurbulence type="fractalNoise" baseFrequency=".004 .018" numOctaves="2" seed="11" result="waterGrain">
+          <animate attributeName="baseFrequency" values=".004 .018;.006 .024;.004 .018" dur="31s" repeatCount="indefinite" />
+        </feTurbulence>
+        <feDisplacementMap in="SourceGraphic" in2="waterGrain" scale="13" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
     </defs>
     <g class="landscape-far">
       <path d="M-40 449 C38 444 79 415 132 397 C190 377 229 388 268 415 C303 439 333 440 370 425 C411 409 431 373 474 364 C518 354 555 370 580 400 C607 432 643 438 685 422 C727 406 749 386 786 386 C822 386 848 404 878 421 C913 441 951 440 990 422 C1036 402 1068 373 1115 367 C1164 360 1195 378 1225 404 C1261 436 1291 442 1332 426 C1372 410 1405 388 1445 389 C1492 390 1527 420 1570 431 C1601 439 1624 438 1640 436 L1640 900 L-40 900 Z" fill="url(#farLakeMountain)" filter="url(#softLakeEdge)" />
-      <path d="M-20 458 C102 432 128 405 205 402 C274 400 319 439 389 438 C474 437 499 389 560 383 C641 375 668 426 748 430 C826 434 857 404 920 400 C997 396 1036 435 1110 436 C1193 437 1230 391 1305 389 C1387 387 1424 428 1501 437 C1542 442 1584 440 1620 436" fill="none" stroke="#80948D" stroke-opacity=".24" stroke-width="2" filter="url(#lakeWave)" />
     </g>
     <g class="landscape-near">
       <path d="M-40 526 C42 519 91 493 145 480 C208 464 254 478 291 506 C332 537 366 543 411 526 C459 508 491 470 542 461 C592 452 627 465 658 491 C695 522 732 538 776 528 C820 518 847 490 887 482 C938 471 980 483 1014 510 C1051 539 1090 546 1135 530 C1188 512 1217 480 1267 477 C1320 474 1358 494 1390 518 C1428 546 1465 549 1510 533 C1557 517 1590 513 1640 519 L1640 900 L-40 900 Z" fill="url(#nearLakeMountain)" filter="url(#softLakeEdge)" />
-      <path d="M20 537 C140 520 177 492 239 492 C306 492 333 529 396 536 C474 545 507 490 570 481 C647 471 678 515 751 526 C825 538 860 500 930 495 C1006 489 1047 527 1120 537 C1192 546 1231 499 1301 492 C1380 484 1417 525 1490 538" fill="none" stroke="#777A75" stroke-opacity=".2" stroke-width="2" filter="url(#lakeWave)" />
+    </g>
+    <g class="landscape-water" filter="url(#softWaterTexture)">
+      <path d="M-50 555 C70 548 128 574 236 563 C354 551 420 578 536 565 C642 553 724 575 842 563 C961 551 1040 580 1164 564 C1281 548 1364 576 1483 561 C1550 552 1604 559 1650 566 L1650 930 L-50 930 Z" fill="url(#lakeSurfaceWash)" />
+      <path d="M-30 622 C94 611 177 629 261 619 C359 607 437 631 524 620 C616 608 703 629 788 619 C891 606 978 634 1072 620 C1170 606 1257 629 1353 618 C1451 606 1537 631 1630 616 C1541 646 1461 638 1370 649 C1266 662 1178 637 1082 650 C984 663 899 641 801 652 C699 664 613 642 520 655 C421 669 339 644 249 657 C147 671 62 645 -30 662 Z" fill="#80948D" opacity=".055" />
+      <path d="M130 720 C246 708 306 726 404 715 C503 703 574 728 671 716 C768 705 841 731 942 718 C1047 705 1114 728 1216 716 C1311 705 1389 729 1485 718 C1540 712 1585 718 1630 727 C1532 743 1451 736 1352 748 C1252 759 1174 738 1078 750 C971 763 893 740 798 751 C690 763 606 741 503 753 C406 764 322 742 225 754 C184 759 154 752 130 750 Z" fill="#F5F1E8" opacity=".1" />
     </g>
     <g class="landscape-mist" filter="url(#softLakeMist)">
       <path d="M-30 483 C150 446 267 462 407 480 C563 500 646 478 799 469 C958 459 1070 477 1212 486 C1376 496 1481 465 1630 462 L1630 550 C1453 550 1355 532 1195 539 C1049 545 953 522 799 530 C637 538 545 557 397 538 C245 519 139 524 -30 558 Z" fill="url(#lakeMist)" />
     </g>
   </svg>
-  <div class="app-shell">
-    <header class="app-header">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true">☂</span>
-        <div>
-          <h1>伞下江南</h1>
-          <p>JIANGNAN BENEATH THE UMBRELLA</p>
+  <div id="homeLakeHost" aria-hidden="true"></div>
+  <div class="ink-wash-background" id="inkWashCanvas" aria-hidden="true"></div>
+  <main class="site-page home-page" id="homePage">
+    <div class="home-composition">
+      <section class="home-copy" aria-labelledby="homeTitle">
+        <h1 id="homeTitle" aria-label="一竹一绸，藏尽西湖">
+          <span class="home-title-line home-title-line-first">一竹一绸</span>
+          <span class="home-title-line home-title-line-second"><span>藏尽西</span><span id="homeTitleLast">湖</span></span>
+        </h1>
+        <p class="home-poem"><span>以竹为骨，以绸为面。</span><span class="home-poem-lines"><span>一伞撑开江南烟雨，</span><span>一笔绘就西湖风华。</span></span></p>
+        <nav class="home-actions" aria-label="探索西湖绸伞">
+          <a class="home-action home-action-primary" href="#studio" data-route="studio">绘制绸伞</a>
+          <a class="home-action" href="#heritage" data-route="heritage">了解文化</a>
+          <a class="home-action" href="#gallery" data-route="gallery">作品画廊</a>
+        </nav>
+      </section>
+      <div class="home-umbrella-stage" aria-label="可拖动欣赏的西湖绸伞">
+        <div class="showcase-canvas-host" id="homeUmbrellaHost"></div>
+      </div>
+    </div>
+  </main>
+
+  <section class="site-page heritage-page" id="heritagePage" hidden>
+    <div class="heritage-ink-host" id="heritageInkHost" aria-hidden="true"></div>
+    <main class="heritage-exhibition" aria-label="西湖绸伞数字展陈">
+      <div class="heritage-kiosk">
+        <div class="heritage-book-layout">
+          <nav class="page-nav heritage-page-nav" aria-label="页面导航">
+            <a href="#home" data-route="home" aria-label="首页"><span aria-hidden="true">首页</span></a>
+            <a href="#heritage" data-route="heritage" aria-label="非遗文化" aria-current="page"><span aria-hidden="true">非遗文化</span></a>
+            <a href="#studio" data-route="studio" aria-label="绘制工坊"><span aria-hidden="true">绘制工坊</span></a>
+            <a href="#gallery" data-route="gallery" aria-label="作品画廊"><span aria-hidden="true">作品画廊</span></a>
+          </nav>
+          <nav class="heritage-tabs heritage-tabs-left" aria-label="已翻过的书页索引签">
+            <button type="button" data-heritage-spread="1" aria-label="返回创制与流传"><span>创制</span></button>
+            <button type="button" data-heritage-spread="2" aria-label="返回材料与骨架"><span>材料</span></button>
+            <button type="button" data-heritage-spread="6" aria-label="返回伞面装饰"><span>装饰</span></button>
+            <button type="button" data-heritage-spread="8" aria-label="返回贴青与收拢"><span>贴青</span></button>
+            <button type="button" data-heritage-spread="10" aria-label="返回纹样与观看"><span>纹样</span></button>
+            <button type="button" data-heritage-spread="11" aria-label="返回收藏与养护"><span>养护</span></button>
+          </nav>
+          <div class="heritage-book" id="heritageBook" aria-live="polite">
+          <div class="heritage-spread is-active" data-spread="0">
+            <article class="heritage-leaf heritage-cover-page">
+              <p class="heritage-kicker">西湖绸伞 · 工艺长卷</p><h1>一把伞<br>撑起西湖烟雨</h1>
+              <p>1932 年，杭州都锦生丝织厂以江南丝绸和富阳淡竹试制绸伞。伞面绘入西湖风景，撑开映出湖山，收拢如一节竹。</p>
+              <figure class="heritage-photo heritage-cover-photo">
+                <img src="assets/heritage/papers/painted-silk-umbrella.jpg" alt="绘有西湖风景的绸伞，伞骨从中心向外展开" loading="eager" decoding="async">
+                <figcaption>风景落在绸面上，竹骨沿伞心放射</figcaption>
+              </figure>
+            </article>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">01</span><p class="heritage-kicker">先看一把伞</p><h2>竹、绸与西湖风景</h2>
+              <p>展开一把绸伞，可以看到长骨托住伞面，短骨连接活动伞巢。推起或拉下伞巢，短骨改变角度，带动整圈伞骨张开或收拢；骨架、伞巢与绸面一起决定伞面的弧度和开合手感。</p>
+              <p>西湖绸伞既能遮雨纳凉，也用于舞蹈、杂技、陈设和礼赠。不同用途对伞面尺寸、重量、骨数和装饰有不同要求。伞面不只是承载图案的“画布”，也参与整把伞的结构与开合。</p>
+              <p>伞面常见刷花、绘花、绣花三种装饰。西湖山水、花鸟与人物被安排在一圈圈扇区中；撑伞时画面随伞面展开，合伞时又沿着骨线折叠收拢。</p>
+              <blockquote>撑开一把伞，收拢一节竹。</blockquote>
+            </article>
+          </div>
+          <div class="heritage-spread" data-spread="1" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">02</span><p class="heritage-kicker">一 · 创制与流传</p><h2>丝绸厂里的新式雨伞</h2>
+              <p>1932 年，都锦生丝织厂受日本绢伞启发，决定以杭州周边淡竹制骨、用丝绸张面，并把西湖十景绘上伞面。竹振斐等制伞工匠参与试制，竹骨结构与风景装饰由此结合成一件能开合的西湖工艺品。</p>
+              <p>1935 年前后，毛家埠出现专门制作绸伞的“竹氏伞作”。新中国成立后，制伞研究和产品调整继续推进，伞骨数量、刷花套版、伞头与柄部造型逐渐形成更稳定的样式。</p>
+              <p>发展初期，年产量曾达到约 60 万把，其中近七成销往欧亚市场。20 世纪 60 年代产量逐渐下降，1970 年停产；1972 年恢复生产后，年产量约三四千把。淡竹供应有限、工时较长，也让手工制作难以大规模展开。</p>
+              <p>2008 年，西湖绸伞制作技艺列入国家级非物质文化遗产名录。2011 年，杭州中国伞博物馆启动保护项目并建立资料库；实物、影像和工艺记录让不同年代的伞样与做法能够继续被认识。</p>
+            </article>
+            <article class="heritage-leaf heritage-illustration-leaf">
+              <span class="heritage-page-index">03</span><figure class="heritage-photo heritage-display-photo"><img src="assets/heritage/papers/green-painted-umbrellas.jpg" alt="三把绘有花卉的绿色西湖绸伞" loading="eager" decoding="async"><figcaption>花卉图案沿着伞骨铺展</figcaption></figure><button class="heritage-page-tab" type="button" data-heritage-spread="1" aria-label="跳至创制与流传"><span>创制</span></button>
+            </article>
+          </div>
+          <div class="heritage-spread is-image-left" data-spread="2" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">05</span><p class="heritage-kicker">二 · 材料选择</p><h2>竹、绸、木，各有尺度</h2>
+              <p>伞面常选用杭州、嘉兴、湖州一带出产的丝绸，如电力纺和乔其纱。面料要织得细密，同时保持轻薄、柔软、透光；天蓝、新绿、玫瑰、淡黄等颜色在绸面上显得清润。</p>
+              <p>制骨多用淡竹。工匠先“望、抚、敲、量”，挑选竹龄约三至五年、色泽均匀、少斑疤的长竹节，常在霜降后采伐。合用竹材直径约四至五厘米，竹节间距约二十五至二十六厘米。</p>
+              <p>竹筒要顺着纹理劈成细长的篾青与篾黄，再加工成长骨和短骨。常见伞架由三十二或三十六根骨条构成；骨条宽度、竹节平整度和长短比例都会影响伞面是否匀称、收拢是否圆整。</p>
+              <p>上伞面前，缝好伞角的绸料会绷在直径约八十一厘米的竹圈上。工匠对准伞心、整理经纬，再把绸面固定到长骨上；竹、绸与木制伞头、伞柄各有尺寸，最终要在同一次开合里配合妥当。</p>
+            </article>
+            <article class="heritage-leaf heritage-illustration-leaf"><span class="heritage-page-index">04</span><figure class="heritage-photo heritage-display-photo"><img src="assets/heritage/papers/finished-umbrella-styles.jpg" alt="不同颜色与形制的西湖绸伞" loading="eager" decoding="async"><figcaption>伞面、伞骨与伞头各有不同搭配</figcaption></figure><button class="heritage-page-tab" type="button" data-heritage-spread="2" aria-label="跳至材料选择"><span>材料</span></button></article>
+          </div>
+          <div class="heritage-spread" data-spread="3" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">06</span><p class="heritage-kicker">三 · 伞骨加工</p><h2>从整竹到一根根骨条</h2>
+              <p>伞骨加工从分料、刮青和劈竹开始。工人把竹材分作长骨与短骨：长骨要刮净竹青、劈开并开槽，短骨则按长度劈分、钻孔，再依照连接次序编排。</p>
+              <p>一节淡竹可以劈成三十二或三十六根骨条。常用骨条约四毫米宽；若骨条数量增加，工匠还要“抽骨”，使竹筒合拢后保持圆润，竹节连接处也尽量平整。</p>
+              <p>每根骨条上的孔、槽和接合位置都要准确，长骨托面，短骨带动开合。它们先组成上下两圈，再按放射方向排齐；编号留下来的篾青另行保存，等到伞面成形后再贴回原骨。</p>
+              <p>验骨时会检查竹篾厚薄、长短和开槽位置是否一致。细微误差累积到一整圈骨架上，就会让伞面偏斜、开合发涩；因此，外形整齐和活动顺畅要同时做到。</p>
+              <blockquote>先修骨，再谈伞面的圆与匀。</blockquote>
+            </article>
+            <article class="heritage-leaf heritage-illustration-leaf"><span class="heritage-page-index">07</span><figure class="heritage-photo heritage-display-photo"><img src="assets/heritage/papers/bamboo-rib-detail.jpg" alt="竹骨在伞心处交错汇合的近景" loading="eager" decoding="async"><figcaption>骨条在伞心处细密交织</figcaption></figure></article>
+          </div>
+          <div class="heritage-spread" data-spread="4" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">08</span><p class="heritage-kicker">四 · 伞巢与套合</p><h2>开合来自骨架的配合</h2>
+              <p>短骨连接活动伞巢与长骨，推拉伞巢时，短骨角度随之变化，再带动长骨张开或归拢。伞巢的行程、短骨长度和长骨弧度需要一起调校，单个部件合格并不代表整伞开合顺畅。</p>
+              <p>装配时，长短骨按环向顺序排布并逐段检查间距。工人试撑后观察伞面是否偏斜、骨条是否松晃，再调整连接与形态，让各扇区尽量均匀受力。</p>
+              <p>主轴、上下伞巢、伞头和伞柄把手部推拉传到整副骨架。伞体既要打开时保持支撑，也要闭合时顺着伞轴归束，轻便感来自这些活动部件的配合。</p>
+              <p>这套伞骨采用套合结构，不靠胶水把活动部件粘死。连接处保留转动空间，推拉伞巢时长短骨能够连续改变角度；尺寸配合得当，展开有支撑，收拢也不滞涩。</p>
+            </article>
+            <article class="heritage-leaf heritage-illustration-leaf"><span class="heritage-page-index">09</span><figure class="heritage-photo heritage-display-photo"><img src="assets/heritage/papers/radial-bamboo-frame.jpg" alt="撑开的伞架呈现放射状竹骨结构" loading="eager" decoding="async"><figcaption>放射伞骨托起圆形绸面</figcaption></figure></article>
+          </div>
+          <div class="heritage-spread is-image-left" data-spread="5" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">11</span><p class="heritage-kicker">五 · 绸面准备</p><h2>让丝绸在骨架上平展</h2>
+              <p>伞面先缝好伞角，再平绷在竹制绷圈上。工匠把经纬线拉直、校准圆心，换好腰边线后，才能把绸料准确地上到骨架。</p>
+              <p>上架时，绸面逐段粘在长骨上，骨档要匀、胶层要薄。待胶面稳定，工人沿伞缘把多余面料修成圆形，再将边缘向内折贴，形成平整的糊边。</p>
+              <p>边缘太宽会显得厚重，太窄又容易露出线脚。剪边之后还要顺着骨线检查每个扇区，确保撑开时圆面连续、合伞时折痕能够整齐归拢。</p>
+              <p>伞面上架后，短骨孔位还要穿线固定。细密的缝线把柔软绸面稳稳带在骨架上，也让伞缘在反复开合时不易松脱。</p>
+            </article>
+            <article class="heritage-leaf heritage-illustration-leaf"><span class="heritage-page-index">10</span><figure class="heritage-photo heritage-display-photo"><img src="assets/heritage/papers/pink-silk-umbrella.jpg" alt="细密伞骨托起粉色绸伞伞面" loading="eager" decoding="async"><figcaption>绸面轻薄，骨线在伞下清晰可见</figcaption></figure></article>
+          </div>
+          <div class="heritage-spread" data-spread="6" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">12</span><p class="heritage-kicker">六 · 伞面纹样</p><h2>画面随伞面展开</h2>
+              <p>伞面装饰有画花、刷花、绣花三种传统方式。乔其纱轻薄、经纬较疏，画师要控制笔势、水分和速度，才能让山水、花鸟的线条稳稳落在绸面上。</p>
+              <p>刷花先把图稿分成不同颜色，刻成镂空版后逐层套印。每次都要重新对准伞面，颜料才能接出清晰的轮廓；多层色彩透过薄绸显现，远山和花木便有了深浅。</p>
+              <p>刺绣则以针线组织图案，盘金线或彩色丝线会在伞面形成起伏。花线沿短骨穿过细小孔位，一把伞通常要来回穿约 296 针，线脚均匀，伞缘才显得整齐。</p>
+              <p>构图时先标出伞心、骨线与伞缘，再把亭台、湖面、花木安排到不同扇区。画面既要在撑开时连贯，也要避开容易被折痕压住的位置；每一笔都要顺着伞面的弧度落下。</p>
+            </article>
+            <article class="heritage-leaf heritage-illustration-leaf heritage-craft-board">
+              <span class="heritage-page-index">13</span><p class="heritage-kicker">实物图版 · 不同装饰面貌</p>
+              <div class="heritage-craft-studies">
+                <figure><img src="assets/heritage/papers/painted-silk-umbrella.jpg" alt="伞面绘有花鸟纹样的浅色西湖绸伞" loading="eager" decoding="async"><figcaption>花鸟纹样铺陈在浅色绸面</figcaption></figure>
+                <figure><img src="assets/heritage/papers/patterned-silk-umbrella.jpg" alt="以戏曲人物纹样装饰的西湖绸伞" loading="eager" decoding="async"><figcaption>传统题材也能呈现鲜明色彩</figcaption></figure>
+              </div>
+              <p class="heritage-illustration-caption">细密线脚连接伞缘与短骨，让伞面经得住反复开合。</p>
+              <button class="heritage-page-tab" type="button" data-heritage-spread="6" aria-label="跳至伞面纹样"><span>装饰</span></button>
+            </article>
+          </div>
+          <div class="heritage-spread" data-spread="7" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">14</span><p class="heritage-kicker">七 · 刷花与彩绘</p><h2>层层套色，也要顺着丝绸</h2>
+              <p>刷花把一幅图案拆成不同颜色的版片。工匠依次定位、轻刷和补色，刻版的镂空边缘留下清楚轮廓，层层套色则让湖面、远山和花木显出前后关系。</p>
+              <p>手绘直接面对轻薄的乔其纱，水分过多容易洇开，笔触太干又会断续；绣花则靠针脚与线材表现质感。三种做法需要适应绸料软、伞面弯、骨线多的特点。</p>
+              <p>三潭印月、平湖秋月、柳浪闻莺和花港观鱼都曾成为伞面题材。画师安排景物时会避开伞骨交界，把连续的山水拆进不同扇区，让伞转动时仍能读出湖景层次。</p>
+              <p>今天的设计也把剪纸轮廓、扎染色彩和描金细节带到伞面上。数字草图经过人工调整后，再用传统喷绘转印并以毛笔收细节；面向孩子的微型材料包，则让选竹、装架和绘饰变成亲手体验。</p>
+            </article>
+            <article class="heritage-leaf heritage-illustration-leaf"><span class="heritage-page-index">15</span><figure class="heritage-photo heritage-display-photo"><img src="assets/heritage/papers/colorful-silk-umbrellas.jpg" alt="多把不同颜色与纹样的西湖绸伞并列展示" loading="eager" decoding="async"><figcaption>颜色与纹样随伞面一同展开</figcaption></figure></article>
+          </div>
+          <div class="heritage-spread is-image-left" data-spread="8" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">17</span><p class="heritage-kicker">八 · 贴青与收拢</p><h2>竹青回到原配骨上</h2>
+              <p>制骨时剥下的竹青会逐根编号，待伞面装好并干燥后，再按记号贴回原来的骨条。青篾薄而柔韧，既衬出伞骨轮廓，也让合拢后的伞体重新呈现圆竹形态。</p>
+              <p>贴青要做到“三齐一圆”：伞尖、竹节和下缘对齐，收伞后整体圆稳。若把青篾错贴到别的骨条上，伞面就可能鼓包、偏斜，合起时也难以收成整齐的一束。</p>
+              <p>贴好之后，工匠会反复开合和修形，检查骨条是否顺直、绸面是否夹在竹骨之间、伞缘是否整齐。只有每根青篾都回到原位，开伞和收伞才能保持同样利落。</p>
+              <p>这道工序把制骨时的编号、伞面安装和成品修形连在一起。撑开时，竹青顺着放射骨线勾出轮廓；收拢时，青篾又随伞面折痕归拢到竹筒般的形态。</p>
+              <blockquote>撑开为伞，收拢成竹。</blockquote>
+            </article>
+            <article class="heritage-leaf heritage-illustration-leaf"><span class="heritage-page-index">16</span><figure class="heritage-photo heritage-display-photo"><img src="assets/heritage/papers/craftsman-weaving-ribs.jpg" alt="双手将细竹骨依次穿接成伞架" loading="eager" decoding="async"><figcaption>细竹骨逐根穿接，组成伞架</figcaption></figure><button class="heritage-page-tab" type="button" data-heritage-spread="8" aria-label="跳至贴青与收拢"><span>贴青</span></button></article>
+          </div>
+          <div class="heritage-spread" data-spread="9" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">18</span><p class="heritage-kicker">九 · 传承与观看</p><h2>一把伞里的协作知识</h2>
+              <p>制伞传承人宋志明于 1977 年进入工美研究所学习制伞，此后长期从事绸伞制作。保护这门手艺，既要保存伞作与工艺资料，也要让制作知识能在新的学习环境里继续流动。</p>
+              <p>他师从老艺人竹振斐学习五年，后来办厂、带徒并持续改进伞面材料和装饰方法。号竹、验骨等经验往往靠反复示范和手上比较传授，师徒共同操作也是技艺延续的一部分。</p>
+              <p>宋志明整理并保存 20 世纪 50 年代以来的绸伞实物与档案，也与高校合作开展技能培训。馆藏让人看到成品形态，资料保留发展脉络，教学则把制伞方法带回实际操作。</p>
+              <p>观看时可以沿着一把伞追踪工序：长短骨怎样成架，绸面怎样上架，花线如何穿过短骨，竹青又怎样回到对应位置。博物馆的现场展演和体验还会开放伞面绘画、穿花线、贴青等环节，让手上的动作与成品结构对应起来。</p>
+            </article>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">19</span><p class="heritage-kicker">十八道工序</p><h2>从一根竹，到一把伞</h2>
+              <p>制伞流程从选竹开始，经过伞架、绸面、装饰与装配。十八道工序环环相扣，每一步都为下一步留出准确的位置。</p>
+              <div class="heritage-stage-map" aria-label="西湖绸伞制作的三个阶段">
+                <section><span>01</span><div><b>选材与制骨</b><small>选竹 · 伞骨加工 · 车木 · 伞骨撇青</small></div></section>
+                <section><span>02</span><div><b>上面与装饰</b><small>伞面装饰 · 上架 · 串线 · 剪边 · 折伞 · 贴青</small></div></section>
+                <section><span>03</span><div><b>装配与收尾</b><small>刮胶 · 装杆 · 包头装柄 · 穿花线 · 钉扣 · 修伞 · 检验 · 包装</small></div></section>
+              </div>
+              <p>工匠完成一道工序，会检查位置、松紧与形态。伞面是否圆整、伞巢是否顺滑，来自一连串细致的校准和试撑。</p>
+            </article>
+          </div>
+          <div class="heritage-spread is-image-left" data-spread="10" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">21</span><p class="heritage-kicker">十 · 纹样与观看</p><h2>纹样顺着伞骨呼吸</h2>
+              <p>伞面图案从西湖山水、花鸟人物，延伸到戏曲、服饰与日常生活。萧山万缕丝、桐乡蓝印花布、扎染布和萧山花边都曾被用于伞面，让传统竹骨承接不同的织物质感。</p>
+              <p>新旧技法可以组合使用：绘花与绣花、刷花与刺绣相互补充，剪纸轮廓、描金线条也能成为新的装饰语言。图案虽有变化，仍要绕开伞骨交界，照顾伞心、伞缘和折叠位置。</p>
+              <p>俯看时，放射的骨线把圆面分成扇区；从侧面看，伞面弧度又会改变景物的比例。设计者要顺着骨架安排图案，使它在撑开时连贯、转动时有层次、合拢时不易磨损。</p>
+              <p>近年来，年轻设计者尝试把数字草图、传统喷绘和手工细描串在一起，也把四季花木、动漫人物和当代生活带上伞面。新图案经手工调整后落在丝绸上，制作时仍要经得住开合与折叠。</p>
+            </article>
+            <article class="heritage-leaf heritage-illustration-leaf"><span class="heritage-page-index">20</span><figure class="heritage-photo heritage-display-photo"><img src="assets/heritage/papers/patterned-silk-umbrella.jpg" alt="绘有戏曲人物纹样的粉色西湖绸伞" loading="eager" decoding="async"><figcaption>传统戏曲纹样与放射伞骨相映</figcaption></figure><button class="heritage-page-tab" type="button" data-heritage-spread="10" aria-label="跳至纹样与观看"><span>纹样</span></button></article>
+          </div>
+          <div class="heritage-spread is-image-left" data-spread="11" hidden>
+            <article class="heritage-leaf heritage-page-content">
+              <span class="heritage-page-index">23</span><p class="heritage-kicker">十一 · 收藏与养护</p><h2>把实物、记录与技艺一同保存</h2>
+              <p>保护一把绸伞，要连同伞面、竹骨、木制伞头和穿线装饰一起记录。不同年代的样式、材料选择与工序变化也要留下图像和文字，才能看见一门手艺如何随生活改变。</p>
+              <p>2024 年施行的杭州地方标准 DB3301/T 0442—2024，将产品结构、制伞技艺、质量要求与传承保护纳入同一套规范，并明确劈青、贴青、刷花等核心做法。</p>
+              <p>标准帮助学习者看清步骤，也为生产和修复提供共同尺度；核心技艺得到保护，核心之外仍可改良材料和图案。传统因此既有可循的根，也留有继续生长的空间。</p>
+              <p>博物馆的展演和体验把记录带回手上：观众能观看现场制作，也能尝试伞面绘画、穿花线或贴青。实物、影像、标准与动手实践放在一起，才能看见一把伞怎样从材料变成日用品与工艺品。</p>
+            </article>
+            <article class="heritage-leaf heritage-illustration-leaf"><span class="heritage-page-index">22</span><figure class="heritage-photo heritage-display-photo"><img src="assets/heritage/papers/umbrella-museum-display.jpg" alt="杭州伞博物馆中的西湖绸伞专题展陈" loading="eager" decoding="async"><figcaption>展陈、实物和工艺记录彼此补充</figcaption></figure><button class="heritage-page-tab" type="button" data-heritage-spread="11" aria-label="跳至收藏与养护"><span>养护</span></button></article>
+          </div>
+            <div class="heritage-flip-sheet" id="heritageFlipSheet" aria-hidden="true"><div class="heritage-flip-face heritage-flip-front" id="heritageFlipFront"></div><div class="heritage-flip-face heritage-flip-back" id="heritageFlipBack"></div></div>
+            <button class="heritage-page-corner heritage-page-corner-previous" type="button" id="heritagePrevious" aria-label="翻回上一页"><span aria-hidden="true"></span></button>
+            <button class="heritage-page-corner heritage-page-corner-next" type="button" id="heritageNext" aria-label="翻到下一页"><span aria-hidden="true"></span></button>
+          </div>
+          <nav class="heritage-tabs heritage-tabs-right" aria-label="待翻书页索引签">
+            <button type="button" data-heritage-spread="1" aria-label="创制与流传"><span>创制</span></button>
+            <button type="button" data-heritage-spread="2" aria-label="材料与骨架"><span>材料</span></button>
+            <button type="button" data-heritage-spread="6" aria-label="伞面装饰"><span>装饰</span></button>
+            <button type="button" data-heritage-spread="8" aria-label="贴青与收拢"><span>贴青</span></button>
+            <button type="button" data-heritage-spread="10" aria-label="纹样与观看"><span>纹样</span></button>
+            <button type="button" data-heritage-spread="11" aria-label="收藏与养护"><span>养护</span></button>
+          </nav>
         </div>
       </div>
-      <div class="header-actions">
-        <button class="button btn-accent" id="randomBtn" type="button">灵感</button>
-        <button class="button btn-secondary" id="templateBtn" type="button">示例</button>
-        <button class="button btn-secondary" id="clearBtn" type="button">清空</button>
-        <button class="button btn-primary" id="saveBtn" type="button">存入画廊</button>
+    </main>
+  </section>
+
+  <section class="site-page gallery-page" id="galleryPage" hidden>
+    <div class="gallery-classic-view" id="galleryClassicView">
+      <div class="gallery-viewport" id="galleryViewport" aria-label="雨中西湖拱桥场景">
+        <div class="gallery-three-host" id="gallerySceneHost" aria-label="人物沿拱桥桥面行走；点击绸伞打开三维欣赏"></div>
+        <div class="gallery-empty" id="galleryEmpty" hidden><p>你的伞画将在这里与江南相遇</p><a href="#studio" data-route="studio">去绘制一把伞</a></div>
       </div>
-    </header>
+      <a class="gallery-corner-brand" href="#home" data-route="home" aria-label="返回首页">西湖绸伞</a>
+      <nav class="gallery-floating-nav" aria-label="画廊导航">
+        <a href="#home" data-route="home">首页</a><a href="#heritage" data-route="heritage">非遗文化</a><a href="#studio" data-route="studio">绘制工坊</a>
+        <button type="button" id="galleryWorksToggle" data-ink-nav aria-controls="galleryWorksPanel" aria-expanded="false">全部绸伞</button>
+        <button type="button" id="galleryHangingOpen" data-ink-nav>悬伞展廊</button>
+      </nav>
+      <aside class="gallery-works-panel" id="galleryWorksPanel" aria-label="全部绸伞" hidden>
+        <div class="gallery-works-heading"><h2>全部绸伞</h2><button type="button" id="galleryWorksClose" aria-label="关闭作品列表">×</button></div>
+        <div class="gallery-works-filters" role="group" aria-label="筛选绸伞"><button type="button" data-gallery-filter="all" class="is-active">全部作品</button><button type="button" data-gallery-filter="mine">我的作品</button></div>
+        <div class="gallery-works-grid" id="galleryWorksGrid"></div>
+      </aside>
+    </div>
+    <main class="hanging-gallery" id="hangingGallery" hidden aria-label="悬挂绸伞展廊">
+      <div class="hanging-gallery-scene" id="hangingGalleryScene">
+        <div class="hanging-gallery-backdrop" aria-hidden="true"></div>
+        <div class="hanging-gallery-inkflow" aria-hidden="true"></div>
+        <div class="hanging-gallery-mist hanging-gallery-mist--far" aria-hidden="true"></div>
+        <div class="hanging-gallery-waterwash" aria-hidden="true"></div>
+        <div class="hanging-gallery-timewash" aria-hidden="true"></div>
+        <div class="hanging-gallery-mist hanging-gallery-mist--near" aria-hidden="true"></div>
+        <section class="hanging-gallery-stage" id="hangingGalleryStage" aria-label="随风轻摆的悬挂绸伞">
+          <div class="hanging-gallery-suspension" id="hangingGallerySuspension">
+            <div class="hanging-gallery-rope" aria-hidden="true">
+              <svg class="hanging-gallery-rope-svg" viewBox="0 0 100 40" preserveAspectRatio="none" role="presentation">
+                <path class="hanging-gallery-rope-shadow" d="M1 4 C27 4 37 36 50 36 C63 36 73 4 99 4"></path>
+                <path class="hanging-gallery-rope-main" d="M1 2 C27 2 37 34 50 34 C63 34 73 2 99 2"></path>
+                <path class="hanging-gallery-rope-glint" d="M1 1 C27 1 37 33 50 33 C63 33 73 1 99 1"></path>
+              </svg>
+              <i class="hanging-gallery-rope-anchor hanging-gallery-rope-anchor--left"></i>
+              <i class="hanging-gallery-rope-anchor hanging-gallery-rope-anchor--right"></i>
+            </div>
+            <div class="hanging-gallery-parasols" id="hangingGalleryParasols"></div>
+          </div>
+          <div class="hanging-gallery-walkers" id="hangingGalleryWalkers" aria-hidden="true"></div>
+          <div class="hanging-gallery-weather" aria-hidden="true"></div>
+        </section>
+        <div class="hanging-gallery-unifier" aria-hidden="true"></div>
+        <div class="hanging-gallery-grain" aria-hidden="true"></div>
+      </div>
+      <nav class="page-nav heritage-page-nav hanging-gallery-nav" aria-label="页面导航">
+        <a href="#home" data-route="home"><span>首页</span></a>
+        <a href="#heritage" data-route="heritage"><span>非遗文化</span></a>
+        <a href="#studio" data-route="studio"><span>绘制工坊</span></a>
+        <button type="button" data-ink-nav data-gallery-mode="classic"><span>原画廊</span></button>
+      </nav>
+      <div class="hanging-gallery-rail" aria-label="选择展示的绸伞">
+        <button type="button" class="hanging-gallery-arrow" id="hangingGalleryPrev" aria-label="向左浏览作品">‹</button>
+        <div class="hanging-gallery-track" id="hangingGalleryTrack" tabindex="0"></div>
+        <button type="button" class="hanging-gallery-arrow" id="hangingGalleryNext" aria-label="向右浏览作品">›</button>
+      </div>
+    </main>
+    <section class="gallery-focus" id="galleryFocus" hidden aria-label="独立绸伞欣赏">
+      <div class="gallery-focus-fog" aria-hidden="true"></div><div class="gallery-focus-host showcase-canvas-host" id="galleryFocusHost"></div>
+      <button class="gallery-focus-close" id="galleryFocusClose" type="button" aria-label="关闭独立欣赏">×</button>
+    </section>
+  </section>
+
+  <section class="site-page studio-page" id="studioPage" hidden>
+  <div class="app-shell">
+    <nav class="page-nav heritage-page-nav studio-floating-nav" aria-label="页面导航">
+      <a href="#home" data-route="home" aria-label="首页"><span aria-hidden="true">首页</span></a>
+      <a href="#heritage" data-route="heritage" aria-label="非遗文化"><span aria-hidden="true">非遗文化</span></a>
+      <a href="#studio" data-route="studio" aria-label="绘制工坊" aria-current="page"><span aria-hidden="true">绘制工坊</span></a>
+      <a href="#gallery" data-route="gallery" aria-label="作品画廊"><span aria-hidden="true">作品画廊</span></a>
+    </nav>
 
     <main class="main-content">
       <section class="canvas-container" aria-label="绸伞创作画布">
+        <aside class="pattern-story" id="patternStory" aria-label="纹样解释" aria-live="polite" hidden>
+          <header class="pattern-story-header">
+            <div class="pattern-story-heading">
+              <p class="pattern-story-kicker">纹样解释 <span aria-hidden="true">·</span> <span id="patternStoryCategory"></span></p>
+              <h2 id="patternStoryTitle"></h2>
+            </div>
+          </header>
+          <div class="pattern-story-window" id="patternStoryWindow">
+            <div class="pattern-story-copy" id="patternStoryCopy">
+              <p id="patternStoryMeaning"></p>
+            </div>
+          </div>
+        </aside>
         <div class="canvas-stage" id="canvasStage">
           <div class="canvas-artwork-viewport" id="canvasArtworkViewport">
             <canvas id="umbrellaCanvas" width="720" height="720" aria-label="西湖绸伞绘制画布；伞面内绘制，左侧空白拖动旋转，滚轮缩放"></canvas>
@@ -86,71 +376,65 @@
           </div>
         </div>
         <div class="three-viewer" id="threeViewer" hidden aria-label="西湖绸伞三维预览">
-          <div class="scenery-backdrop" aria-hidden="true">
-            <span class="scenery-hill scenery-hill-far"></span>
-            <span class="scenery-hill scenery-hill-near"></span>
-            <span class="scenery-mist"></span>
-          </div>
-          <div class="viewer-toolbar">
-            <button class="viewer-button" id="importModelBtn" type="button">导入 Blender GLB</button>
-            <button class="viewer-button" id="resetModelBtn" type="button" hidden>恢复程序伞</button>
-            <button class="viewer-button audio-reactive-button" id="audioReactiveBtn" type="button" aria-pressed="false" title="播放或暂停内置江南氛围音乐与声光响应">
-              <span class="audio-button-label">声光响应</span>
-              <span class="audio-meter" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-            </button>
-            <input id="umbrellaModelInput" type="file" accept=".glb,model/gltf-binary" hidden>
-          </div>
           <div class="three-host" id="threeHost"></div>
-          <div class="viewer-fold-control" role="group" aria-label="绸伞开合控制">
-            <label for="umbrellaFoldRange">开合</label>
-            <input id="umbrellaFoldRange" type="range" min="0" max="100" step="1" value="0" aria-label="伞面收拢程度">
-            <output id="umbrellaFoldValue" for="umbrellaFoldRange">展开</output>
-            <button class="viewer-button fold-toggle" id="foldToggleBtn" type="button" aria-label="收伞">收伞</button>
-          </div>
           <p class="viewer-error" id="threeError" hidden></p>
         </div>
-        <div class="canvas-status" aria-live="polite">
-          <div class="status-info">
-            <span id="patternReadout">西湖荷花</span>
-            <span class="status-divider"></span>
-            <span>画笔对称：<b id="segmentReadout">8</b></span>
+        <div class="canvas-status" aria-label="预览与作品操作">
+          <div class="viewer-fold-control" id="viewerFoldControl" role="group" aria-label="绸伞开合控制" aria-hidden="true">
+            <label for="umbrellaFoldRange">伞面开合</label>
+            <input id="umbrellaFoldRange" type="range" min="0" max="100" step="1" value="0" aria-label="伞面开合程度" disabled>
+            <output id="umbrellaFoldValue" for="umbrellaFoldRange">完全展开</output>
+            <button class="viewer-button fold-toggle" id="foldToggleBtn" type="button" aria-label="收拢绸伞" disabled>收拢</button>
           </div>
           <div class="view-switch" role="group" aria-label="预览模式">
             <button type="button" class="view-button is-active" data-view-mode="2d" aria-pressed="true">2D 绘制</button>
             <button type="button" class="view-button" data-view-mode="3d" aria-pressed="false">3D 赏伞</button>
           </div>
+          <button class="viewer-button audio-reactive-button" id="audioReactiveBtn" type="button" aria-pressed="false" title="点击开启内置音乐与绸面声光响应">
+            <span class="audio-button-label">声光响应</span>
+            <span class="audio-meter" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          </button>
+          <button class="button btn-primary studio-save-button" id="saveBtn" type="button">存入画廊</button>
         </div>
       </section>
 
       <aside class="controls" aria-label="创作工具">
+        <section class="studio-action-bar" aria-label="创作快捷操作">
+          <button class="button btn-accent" id="randomBtn" type="button">灵感</button>
+          <button class="button btn-secondary" id="clearBtn" type="button">清空</button>
+          <button type="button" class="utility-button" id="undoBtn" aria-label="上一步" title="上一步"><span aria-hidden="true">↶</span></button>
+          <button type="button" class="utility-button" id="redoBtn" aria-label="下一步" title="下一步"><span aria-hidden="true">↷</span></button>
+        </section>
         <section class="control-group mode-group">
           <div class="mode-switch" role="group" aria-label="创作模式">
-            <button type="button" class="mode-button is-active" id="brushModeBtn" data-mode="brush">自由绘画</button>
+            <button type="button" class="mode-button is-active" id="fabricModeBtn" data-mode="fabric" aria-pressed="true">伞面选择</button>
             <button type="button" class="mode-button" id="patternModeBtn" data-mode="pattern">纹样装饰</button>
-          </div>
-          <div class="mode-utilities">
-            <button type="button" class="utility-button" id="undoBtn" aria-label="撤销">↶</button>
-            <button type="button" class="utility-button" id="redoBtn" aria-label="重做">↷</button>
-            <button type="button" class="utility-button" id="guideToggle" aria-pressed="false">构图辅助</button>
-            <label class="check-row snap-control" for="zoneSnap"><input type="checkbox" id="zoneSnap" checked><span>区域吸附</span></label>
+            <button type="button" class="mode-button" id="brushModeBtn" data-mode="brush">自由绘画</button>
           </div>
         </section>
 
         <section class="control-group brush-group" id="brushTools">
-          <h2>笔刷</h2>
           <div class="brush-style-row" role="group" aria-label="笔触风格">
             <button type="button" class="style-chip is-active" data-brush-style="soft">柔墨</button>
             <button type="button" class="style-chip" data-brush-style="texture">纤维笔</button>
             <button type="button" class="style-chip" data-brush-style="clean">清晰</button>
             <button type="button" class="style-chip" data-brush-style="fluid">水墨生成</button>
           </div>
-          <div class="swatch-row" role="group" aria-label="笔触颜色">
-            <input type="color" id="colorPicker" value="#b96e68" aria-label="自选笔触颜色">
-            <button type="button" class="color-swatch is-active" data-brush-color="#b96e68" style="--swatch:var(--color-lotus)" aria-label="荷花红"></button>
-            <button type="button" class="color-swatch" data-brush-color="#537c7e" style="--swatch:var(--color-lake)" aria-label="西湖青"></button>
-            <button type="button" class="color-swatch" data-brush-color="#bfa37a" style="--swatch:var(--color-bamboo)" aria-label="竹骨金"></button>
-            <button type="button" class="color-swatch" data-brush-color="#263f3a" style="--swatch:var(--color-ink)" aria-label="黛青"></button>
-            <button type="button" class="color-swatch" data-brush-color="#f1eee5" style="--swatch:var(--color-silk)" aria-label="绸缎米白"></button>
+          <div class="brush-color-layout">
+            <div class="current-brush-color" aria-label="当前笔触颜色">
+              <span class="current-brush-swatch" id="currentBrushColor" aria-hidden="true"></span>
+            </div>
+            <div class="brush-palette-area">
+              <div class="swatch-row brush-palette" role="group" aria-label="笔触颜色">
+                <label class="custom-color-button" for="colorPicker" aria-label="自选笔触颜色" title="自选笔触颜色"><span aria-hidden="true">＋</span><input type="color" id="colorPicker" value="#b96e68" aria-label="自选笔触颜色"></label>
+                <button type="button" class="color-swatch is-active" data-brush-color="#b96e68" style="--swatch:var(--color-lotus)" aria-label="荷花红"></button>
+                <button type="button" class="color-swatch" data-brush-color="#537c7e" style="--swatch:var(--color-lake)" aria-label="西湖青"></button>
+                <button type="button" class="color-swatch" data-brush-color="#bfa37a" style="--swatch:var(--color-bamboo)" aria-label="竹骨金"></button>
+                <button type="button" class="color-swatch" data-brush-color="#263f3a" style="--swatch:var(--color-ink)" aria-label="黛青"></button>
+                <button type="button" class="color-swatch" data-brush-color="#f1eee5" style="--swatch:var(--color-silk)" aria-label="绸缎米白"></button>
+                <button type="button" class="color-swatch" data-brush-color="#d86b46" style="--swatch:#d86b46" aria-label="朱砂橘"></button>
+              </div>
+            </div>
           </div>
           <div class="control-item">
             <label for="brushSize">大小</label>
@@ -165,77 +449,72 @@
         </section>
 
         <section class="control-group symmetry-group">
-          <div class="group-title-row">
-            <h2>放射重复</h2>
+          <div class="control-item studio-inline-range">
+            <label for="segments">放射重复</label>
+            <input type="range" id="segments" min="1" max="14" step="1" value="8" aria-label="放射重复数量">
             <output class="segment-value" id="segmentsValue">8 重</output>
           </div>
-          <div class="segment-slider">
-            <input type="range" id="segments" min="1" max="14" step="1" value="8" aria-label="放射重复数量">
-          </div>
-          <div class="control-item compact-item">
-            <label class="check-row" for="mirror"><input type="checkbox" id="mirror" checked><span>镜像</span></label>
+          <div class="control-item compact-item studio-mirror-row">
+            <label class="check-row" for="mirror"><span>镜像</span><input type="checkbox" id="mirror" role="switch" aria-checked="true" checked></label>
           </div>
         </section>
 
         <section class="control-group pattern-group">
-          <div class="group-title-row">
-            <h2>纹样</h2>
-            <div class="carousel-arrows">
-              <button type="button" class="carousel-arrow" data-carousel="prev" aria-label="向左浏览纹样">‹</button>
-              <button type="button" class="carousel-arrow" data-carousel="next" aria-label="向右浏览纹样">›</button>
-            </div>
+          <div class="pattern-category-row">
+            <h2 id="patternCategoryLabel">纹样分类</h2>
+            <div class="pattern-categories" id="patternCategoryTabs" role="group" aria-label="纹样分类"></div>
           </div>
-          <div class="pattern-categories" id="patternCategories" role="tablist" aria-label="纹样分类"></div>
-          <div class="pattern-carousel" id="patternCarousel" role="listbox" aria-label="选择纹样"></div>
+          <div class="pattern-picker">
+            <button type="button" class="pattern-nav-button" data-carousel="prev" aria-label="向左滑动纹样">‹</button>
+            <div class="pattern-carousel" id="patternCarousel" role="listbox" aria-label="选择纹样"></div>
+            <button type="button" class="pattern-nav-button" data-carousel="next" aria-label="向右滑动纹样">›</button>
+          </div>
         </section>
 
         <section class="control-group pattern-edit-group" id="patternTools" hidden>
-          <div class="group-title-row"><h2>纹样编辑</h2><button type="button" class="text-button" id="deletePatternBtn">删除选中</button></div>
-          <div class="pattern-edit-actions"><button type="button" class="button btn-primary repeat-button" id="repeatBtn">环形重复</button><span class="zone-note" id="selectedZone">伞面区域</span></div>
+          <div class="pattern-repeat-action">
+            <button type="button" class="repeat-button" id="repeatBtn"><span aria-hidden="true">↻</span> 环形重复</button>
+            <button type="button" class="repeat-button delete-button" id="deletePatternBtn"><span aria-hidden="true">×</span> 删除</button>
+          </div>
           <div class="control-item"><label for="repeatCount">重复数</label><input type="range" id="repeatCount" min="2" max="16" step="1" value="8"><output class="value-display" id="repeatCountValue">8</output></div>
-          <div class="control-item"><label for="repeatRadius">排列半径</label><input type="range" id="repeatRadius" min="0" max="238" step="1" value="95"><output class="value-display" id="repeatRadiusValue">95px</output></div>
-          <div class="control-item"><label for="patternScale">整体大小</label><input type="range" id="patternScale" min="0.06" max="3" step="0.01" value="1"><output class="value-display" id="patternScaleValue">100%</output></div>
-          <div class="control-item"><label for="patternRotation">旋转角度</label><input type="range" id="patternRotation" min="-180" max="180" step="1" value="0"><output class="value-display" id="patternRotationValue">0°</output></div>
-          <div class="orientation-row" role="group" aria-label="环形纹样朝向">
-            <button type="button" class="style-chip" data-orientation="tangent">切线</button>
-            <button type="button" class="style-chip" data-orientation="radial">径向</button>
-            <button type="button" class="style-chip is-active" data-orientation="original">原朝向</button>
-          </div>
+          <div class="control-item"><label for="patternScale">大小</label><input type="range" id="patternScale" min="0.06" max="3" step="0.01" value="1"><output class="value-display" id="patternScaleValue">100%</output></div>
+          <div class="control-item"><label for="patternRotation">角度</label><input type="range" id="patternRotation" min="-180" max="180" step="1" value="0"><output class="value-display" id="patternRotationValue">0°</output></div>
         </section>
 
-        <section class="control-group fabric-group">
-          <h2>伞面</h2>
+        <section class="control-group fabric-group" id="fabricTools" hidden>
           <div class="fabric-settings">
-            <div class="swatch-row fabric-swatches" role="group" aria-label="伞面颜色">
-              <button type="button" class="fabric-swatch is-active" data-fabric-color="#f1eee5" style="--swatch:var(--color-silk)" aria-label="绸缎米白"></button>
-              <button type="button" class="fabric-swatch" data-fabric-color="#d5e5dd" style="--swatch:var(--color-mist)" aria-label="淡湖青"></button>
-              <button type="button" class="fabric-swatch" data-fabric-color="#537c7e" style="--swatch:var(--color-lake)" aria-label="西湖青"></button>
-              <button type="button" class="fabric-swatch" data-fabric-color="#d7b0a4" style="--swatch:var(--color-lotus-light)" aria-label="荷花粉"></button>
+            <div class="fabric-color-section">
+              <h3>伞面颜色</h3>
+              <div class="swatch-row fabric-swatches" role="group" aria-label="伞面颜色">
+                <button type="button" class="fabric-swatch is-active" data-fabric-color="#718c7d" style="--swatch:#718c7d" aria-label="湖色乔其纱" title="湖色乔其纱"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#d3c6ac" style="--swatch:#d3c6ac" aria-label="暖牙色绸" title="暖牙色绸"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#7393a3" style="--swatch:#7393a3" aria-label="天青色绸" title="天青色绸"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#879779" style="--swatch:#879779" aria-label="新绿色绸" title="新绿色绸"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#c68f91" style="--swatch:#c68f91" aria-label="玫瑰色绸" title="玫瑰色绸"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#c6a766" style="--swatch:#c6a766" aria-label="淡黄色绸" title="淡黄色绸"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#587063" style="--swatch:#587063" aria-label="黛绿色绸" title="黛绿色绸"></button>
+              </div>
             </div>
-            <div class="fabric-style" role="group" aria-label="织物质感">
-              <button type="button" class="style-chip is-active" data-fabric-style="silk">素绸</button>
-              <button type="button" class="style-chip" data-fabric-style="gauze">轻纱</button>
-              <button type="button" class="style-chip" data-fabric-style="indigo">蓝印</button>
+            <div class="fabric-material-section">
+              <h3>伞面材质</h3>
+              <div class="fabric-style" role="group" aria-label="西湖绸伞伞面材质">
+                <button type="button" class="style-chip is-active" data-fabric-material="georgette" title="乔其纱：轻薄细织，柔和透光；不会改变伞面作品图案">乔其纱</button>
+                <button type="button" class="style-chip" data-fabric-material="plainSilk" title="平纹绸：柔韧细密，呈现克制的丝织质感；不会改变伞面作品图案">平纹绸</button>
+                <button type="button" class="style-chip" data-fabric-material="denseSilk" title="密织绸：织理更紧密、垂坠稍稳，采用柔和漫反射；不会更换作品图案">密织绸</button>
+              </div>
             </div>
           </div>
-        </section>
-
-        <section class="control-group fluid-debug-group" aria-label="水墨流场调试">
-          <div class="group-title-row"><h2>水墨流场</h2><button class="viewer-button fluid-test-button" id="fluidTestBtn" type="button">测试注入</button></div>
-          <label class="fluid-debug-label" for="fluidDebugMode">预览</label>
-          <select id="fluidDebugMode" class="fluid-debug-select" aria-label="流场调试视图">
-            <option value="composite">绸面颜料</option>
-            <option value="velocity">速度场</option>
-            <option value="dye">颜料密度</option>
-            <option value="wetness">湿度场</option>
-          </select>
         </section>
       </aside>
     </main>
   </div>
+  </section>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="js/main.js?v=20261027-uiverse-webawesome-v35"></script>
+  <div class="ink-transition" id="inkTransition" aria-hidden="true">
+    <div class="ink-transition-canvas-host" id="inkTransitionCanvas"></div>
+  </div>
+  <script type="module" src="js/main.js?v=20261102-lake-silk-v23"></script>
 </body>
 </html>

@@ -1,0 +1,635 @@
+<!-- Adapted from YijiaDuan/ink-water at c14293e9391f1d61b4a5bc42b4e7ad571566be4d; see ../upstream-ink-water/README.md and LICENSE. Audio controls removed; pointer movement stirs the silent wash. -->
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>墨·水 — Ink in Water</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #f4f1ea; }
+  #c { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: crosshair; }
+  .ui {
+    position: fixed; left: 18px; bottom: 16px; z-index: 10;
+    display: flex; gap: 10px; align-items: center;
+    font: 13px/1.4 -apple-system, "PingFang SC", "Songti SC", serif;
+    color: #5b554c; user-select: none;
+  }
+  .btn {
+    background: rgba(255,255,255,0.55); backdrop-filter: blur(6px);
+    border: 1px solid rgba(90,85,76,0.25); border-radius: 20px;
+    padding: 7px 14px; cursor: pointer; transition: all .2s; letter-spacing: 1px;
+  }
+  .btn:hover { background: rgba(255,255,255,0.85); }
+  .btn.off { opacity: .45; }
+  .swatches { display: flex; gap: 8px; align-items: center; margin-right: 4px; }
+  .sw {
+    width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+    border: 2px solid rgba(255,255,255,0.7); box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    transition: transform .15s;
+  }
+  .sw:hover { transform: scale(1.15); }
+  .sw.active { border-color: #3a352d; transform: scale(1.2); }
+  .hint {
+    position: fixed; top: 22px; left: 0; right: 0; text-align: center; z-index: 10;
+    font: 15px/1.6 "Songti SC", "STSong", serif; color: rgba(60,55,48,0.5);
+    letter-spacing: 4px; pointer-events: none; transition: opacity 1.2s; opacity: 1;
+  }
+
+/* Embedded as a full-viewport, pointer-transparent cultural exhibit wash. */
+html, body { width:100%; height:100%; overflow:hidden; background:transparent !important; }
+body > :not(#c) { display:none !important; }
+#c { position:fixed !important; inset:0 !important; width:100vw !important; height:100vh !important;
+     display:block !important; pointer-events:none !important; touch-action:auto !important; cursor:default !important; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hint" id="hint">点击 · 拖动 — 墨入清水</div>
+<div class="ui">
+  <div class="swatches" id="swatches"></div>
+  <div class="btn" id="sound">♪ 声音</div>
+  <div class="btn" id="clear">清池</div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   墨·水  —  WebGL 流体模拟 (Navier–Stokes) + Web Audio 实时合成
+   单文件，无外部依赖。墨作为染料注入流体场，自然晕染交融。
+   ============================================================ */
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false })
+        || canvas.getContext('experimental-webgl');
+
+if (!gl) { document.body.innerHTML = '<p style="padding:40px;font-family:serif">你的浏览器不支持 WebGL。</p>'; }
+
+// ---- 浮点纹理支持探测 ----
+const halfFloatExt = gl.getExtension('OES_texture_half_float');
+gl.getExtension('OES_texture_half_float_linear');
+gl.getExtension('OES_texture_float');
+gl.getExtension('OES_texture_float_linear');
+const HALF = halfFloatExt ? halfFloatExt.HALF_FLOAT_OES : (gl.getExtension('OES_texture_float') ? gl.FLOAT : null);
+const texType = HALF || gl.UNSIGNED_BYTE;
+
+// ---- 仿真参数 ----
+const SIM_SCALE   = 0.5;     // 速度/压力场分辨率系数（越小越快）
+const DYE_SCALE   = 1.0;     // 墨色场分辨率系数（越大越细腻）
+const PRESSURE_ITER = 22;    // 压力雅可比迭代次数
+const VEL_DISSIP   = 0.985;  // 速度耗散（越接近1 越粘稠流动越久）
+const DYE_DISSIP   = 0.9955; // 延续上游演示的墨色消散节奏
+const CURL_STRENGTH = 18.0;  // 涡度增强：让墨在水中产生自然的卷曲、丝缕感
+const DIFFUSE_AMT  = 0.32;   // 每帧自扩散强度：越大 墨化开越快越虚
+
+// ============================================================
+//  着色器
+// ============================================================
+const baseVert = `
+  precision highp float;
+  attribute vec2 aPos;
+  varying vec2 vUv; varying vec2 vL; varying vec2 vR; varying vec2 vT; varying vec2 vB;
+  uniform vec2 texelSize;
+  void main () {
+    vUv = aPos * 0.5 + 0.5;
+    vL = vUv - vec2(texelSize.x, 0.0);
+    vR = vUv + vec2(texelSize.x, 0.0);
+    vT = vUv + vec2(0.0, texelSize.y);
+    vB = vUv - vec2(0.0, texelSize.y);
+    gl_Position = vec4(aPos, 0.0, 1.0);
+  }
+`;
+
+function fs(src){ return `precision highp float; precision highp sampler2D;\n` + src; }
+
+// 注墨 / 注入速度
+const splatFrag = fs(`
+  varying vec2 vUv;
+  uniform sampler2D uTarget;
+  uniform float aspectRatio;
+  uniform vec3 color;
+  uniform vec2 point;
+  uniform float radius;
+  void main () {
+    vec2 p = vUv - point.xy;
+    p.x *= aspectRatio;
+    vec3 splat = exp(-dot(p, p) / radius) * color;
+    vec3 base = texture2D(uTarget, vUv).xyz;
+    gl_FragColor = vec4(base + splat, 1.0);
+  }
+`);
+
+// 平流（半拉格朗日）
+const advectFrag = fs(`
+  varying vec2 vUv;
+  uniform sampler2D uVelocity;
+  uniform sampler2D uSource;
+  uniform vec2 texelSize;
+  uniform float dt;
+  uniform float dissipation;
+  void main () {
+    vec2 coord = vUv - dt * texture2D(uVelocity, vUv).xy * texelSize;
+    gl_FragColor = dissipation * texture2D(uSource, coord);
+    gl_FragColor.a = 1.0;
+  }
+`);
+
+// 散度
+const divergenceFrag = fs(`
+  varying vec2 vUv; varying vec2 vL; varying vec2 vR; varying vec2 vT; varying vec2 vB;
+  uniform sampler2D uVelocity;
+  void main () {
+    float L = texture2D(uVelocity, vL).x;
+    float R = texture2D(uVelocity, vR).x;
+    float T = texture2D(uVelocity, vT).y;
+    float B = texture2D(uVelocity, vB).y;
+    vec2 C = texture2D(uVelocity, vUv).xy;
+    if (vL.x < 0.0) L = -C.x;
+    if (vR.x > 1.0) R = -C.x;
+    if (vT.y > 1.0) T = -C.y;
+    if (vB.y < 0.0) B = -C.y;
+    float div = 0.5 * (R - L + T - B);
+    gl_FragColor = vec4(div, 0.0, 0.0, 1.0);
+  }
+`);
+
+// 涡量
+const curlFrag = fs(`
+  varying vec2 vUv; varying vec2 vL; varying vec2 vR; varying vec2 vT; varying vec2 vB;
+  uniform sampler2D uVelocity;
+  void main () {
+    float L = texture2D(uVelocity, vL).y;
+    float R = texture2D(uVelocity, vR).y;
+    float T = texture2D(uVelocity, vT).x;
+    float B = texture2D(uVelocity, vB).x;
+    float curl = 0.5 * (R - L - (T - B));
+    gl_FragColor = vec4(curl, 0.0, 0.0, 1.0);
+  }
+`);
+
+// 涡度约束（增强卷曲）
+const vorticityFrag = fs(`
+  varying vec2 vUv; varying vec2 vL; varying vec2 vR; varying vec2 vT; varying vec2 vB;
+  uniform sampler2D uVelocity;
+  uniform sampler2D uCurl;
+  uniform float curl;
+  uniform float dt;
+  void main () {
+    float L = texture2D(uCurl, vL).x;
+    float R = texture2D(uCurl, vR).x;
+    float T = texture2D(uCurl, vT).x;
+    float B = texture2D(uCurl, vB).x;
+    float C = texture2D(uCurl, vUv).x;
+    vec2 force = 0.5 * vec2(abs(T) - abs(B), abs(R) - abs(L));
+    force /= length(force) + 0.0001;
+    force *= curl * C;
+    force.y *= -1.0;
+    vec2 vel = texture2D(uVelocity, vUv).xy;
+    gl_FragColor = vec4(vel + force * dt, 0.0, 1.0);
+  }
+`);
+
+// 压力雅可比迭代
+const pressureFrag = fs(`
+  varying vec2 vUv; varying vec2 vL; varying vec2 vR; varying vec2 vT; varying vec2 vB;
+  uniform sampler2D uPressure;
+  uniform sampler2D uDivergence;
+  void main () {
+    float L = texture2D(uPressure, vL).x;
+    float R = texture2D(uPressure, vR).x;
+    float T = texture2D(uPressure, vT).x;
+    float B = texture2D(uPressure, vB).x;
+    float divergence = texture2D(uDivergence, vUv).x;
+    float pressure = (L + R + B + T - divergence) * 0.25;
+    gl_FragColor = vec4(pressure, 0.0, 0.0, 1.0);
+  }
+`);
+
+// 减梯度（投影到无散度场）
+const gradientFrag = fs(`
+  varying vec2 vUv; varying vec2 vL; varying vec2 vR; varying vec2 vT; varying vec2 vB;
+  uniform sampler2D uPressure;
+  uniform sampler2D uVelocity;
+  void main () {
+    float L = texture2D(uPressure, vL).x;
+    float R = texture2D(uPressure, vR).x;
+    float T = texture2D(uPressure, vT).x;
+    float B = texture2D(uPressure, vB).x;
+    vec2 velocity = texture2D(uVelocity, vUv).xy;
+    velocity.xy -= vec2(R - L, T - B);
+    gl_FragColor = vec4(velocity, 0.0, 1.0);
+  }
+`);
+
+// 最终上色：dye 存的是「吸收系数」(每通道)，用 Beer–Lambert 减色模型
+// 把宣纸光透过颜料层 —— 不同颜色叠加会像真实颜料一样混色、加深
+const displayFrag = fs(`
+  varying vec2 vUv;
+  uniform sampler2D uDye;
+  uniform vec2 resolution;
+
+  // 简易噪声做宣纸纤维质感
+  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+  float noise(vec2 p){
+    vec2 i = floor(p), f = fract(p);
+    float a = hash(i), b = hash(i+vec2(1,0)), c = hash(i+vec2(0,1)), d = hash(i+vec2(1,1));
+    vec2 u = f*f*(3.0-2.0*f);
+    return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+  }
+
+  void main () {
+    vec3 absorb = texture2D(uDye, vUv).rgb;       // 每通道吸收量
+    float density = (absorb.r + absorb.g + absorb.b) / 3.0;
+
+    // 宣纸底色（暖白），带极淡纤维纹理
+    vec3 paper = vec3(0.960, 0.948, 0.920);
+    float fiber = noise(vUv * resolution.xy * 0.35) * 0.035 - 0.018;
+    paper += fiber;
+
+    // 边缘毛细水痕：用纸纹扰动吸收量，让晕边有飞白与渗化感
+    float edge = 0.90 + 0.10 * noise(vUv * resolution.xy * 0.45 + density * 6.0);
+    absorb *= edge;
+
+    // Beer–Lambert：透过率 = exp(-吸收 * 厚度)，厚度调薄 → 更通透、墨悬于水中
+    vec3 trans = exp(-absorb * 1.7);
+    vec3 col = paper * trans;
+
+    // Render the original solver's pigment as a transparent overlay so the
+    // same fluid can pass across the paper and the book without hiding text.
+    float pigmentAlpha = clamp(density * 2.1, 0.0, 0.34);
+    float inkDensity = clamp(1.0 - (trans.r + trans.g + trans.b) / 3.0, 0.0, 1.0);
+    vec3 inkColor = mix(vec3(0.40, 0.43, 0.40), vec3(0.19, 0.23, 0.21), smoothstep(0.1, 0.78, inkDensity));
+    gl_FragColor = vec4(inkColor, pigmentAlpha);
+  }
+`);
+
+// 扩散：让墨在静水中也缓慢自己化开（层层晕染的关键）
+const diffuseFrag = fs(`
+  varying vec2 vUv; varying vec2 vL; varying vec2 vR; varying vec2 vT; varying vec2 vB;
+  uniform sampler2D uSource;
+  uniform float amount;
+  void main () {
+    vec4 c = texture2D(uSource, vUv);
+    vec4 n = (texture2D(uSource, vL) + texture2D(uSource, vR)
+            + texture2D(uSource, vT) + texture2D(uSource, vB)) * 0.25;
+    gl_FragColor = mix(c, n, amount);
+  }
+`);
+
+// ============================================================
+//  WebGL 样板
+// ============================================================
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s), src);
+  return s;
+}
+function program(vsrc, fsrc){
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vsrc));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fsrc));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  const uniforms = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i=0;i<n;i++){ const info = gl.getActiveUniform(p,i); uniforms[info.name] = gl.getUniformLocation(p, info.name); }
+  return { program: p, uniforms };
+}
+
+const progSplat      = program(baseVert, splatFrag);
+const progAdvect     = program(baseVert, advectFrag);
+const progDivergence = program(baseVert, divergenceFrag);
+const progCurl       = program(baseVert, curlFrag);
+const progVorticity  = program(baseVert, vorticityFrag);
+const progPressure   = program(baseVert, pressureFrag);
+const progGradient   = program(baseVert, gradientFrag);
+const progDiffuse    = program(baseVert, diffuseFrag);
+const progDisplay    = program(baseVert, displayFrag);
+
+// 全屏三角形/四边形
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+function bindQuad(prog){
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  const loc = gl.getAttribLocation(prog.program, 'aPos');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+function draw(target){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// ---- 帧缓冲 ----
+function createFBO(w, h, type, filter){
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, type, null);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.viewport(0,0,w,h);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  return { tex, fbo, w, h, texelX: 1/w, texelY: 1/h,
+           attach(id){ gl.activeTexture(gl.TEXTURE0+id); gl.bindTexture(gl.TEXTURE_2D, tex); return id; } };
+}
+function createDouble(w, h, type, filter){
+  let a = createFBO(w,h,type,filter), b = createFBO(w,h,type,filter);
+  return {
+    get read(){ return a; }, set read(v){ a = v; },
+    get write(){ return b; }, set write(v){ b = v; },
+    swap(){ const t = a; a = b; b = t; }
+  };
+}
+
+let simW, simH, dyeW, dyeH;
+let velocity, dye, divergence, curl, pressure;
+const linearFilter = (HALF && (gl.getExtension('OES_texture_half_float_linear') || gl.getExtension('OES_texture_float_linear'))) ? gl.LINEAR : gl.NEAREST;
+
+function initFramebuffers(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.floor(canvas.clientWidth * dpr);
+  const h = Math.floor(canvas.clientHeight * dpr);
+  canvas.width = w; canvas.height = h;
+
+  simW = Math.max(2, Math.floor(w * SIM_SCALE));
+  simH = Math.max(2, Math.floor(h * SIM_SCALE));
+  dyeW = Math.max(2, Math.floor(w * DYE_SCALE));
+  dyeH = Math.max(2, Math.floor(h * DYE_SCALE));
+
+  velocity   = createDouble(simW, simH, texType, linearFilter);
+  dye        = createDouble(dyeW, dyeH, texType, linearFilter);
+  divergence = createFBO(simW, simH, texType, gl.NEAREST);
+  curl       = createFBO(simW, simH, texType, gl.NEAREST);
+  pressure   = createDouble(simW, simH, texType, gl.NEAREST);
+}
+
+// ============================================================
+//  仿真步进
+// ============================================================
+let lastTime = performance.now();
+
+function step(dt){
+  gl.disable(gl.BLEND);
+
+  // 涡量
+  gl.viewport(0,0,simW,simH);
+  gl.useProgram(progCurl.program); bindQuad(progCurl);
+  gl.uniform2f(progCurl.uniforms.texelSize, velocity.read.texelX, velocity.read.texelY);
+  gl.uniform1i(progCurl.uniforms.uVelocity, velocity.read.attach(0));
+  draw(curl);
+
+  // 涡度约束
+  gl.useProgram(progVorticity.program); bindQuad(progVorticity);
+  gl.uniform2f(progVorticity.uniforms.texelSize, velocity.read.texelX, velocity.read.texelY);
+  gl.uniform1i(progVorticity.uniforms.uVelocity, velocity.read.attach(0));
+  gl.uniform1i(progVorticity.uniforms.uCurl, curl.attach(1));
+  gl.uniform1f(progVorticity.uniforms.curl, CURL_STRENGTH);
+  gl.uniform1f(progVorticity.uniforms.dt, dt);
+  draw(velocity.write); velocity.swap();
+
+  // 散度
+  gl.useProgram(progDivergence.program); bindQuad(progDivergence);
+  gl.uniform2f(progDivergence.uniforms.texelSize, velocity.read.texelX, velocity.read.texelY);
+  gl.uniform1i(progDivergence.uniforms.uVelocity, velocity.read.attach(0));
+  draw(divergence);
+
+  // 压力清零（衰减）+ 雅可比迭代
+  gl.useProgram(progPressure.program); bindQuad(progPressure);
+  gl.uniform2f(progPressure.uniforms.texelSize, velocity.read.texelX, velocity.read.texelY);
+  gl.uniform1i(progPressure.uniforms.uDivergence, divergence.attach(0));
+  for (let i=0;i<PRESSURE_ITER;i++){
+    gl.uniform1i(progPressure.uniforms.uPressure, pressure.read.attach(1));
+    draw(pressure.write); pressure.swap();
+  }
+
+  // 减梯度
+  gl.useProgram(progGradient.program); bindQuad(progGradient);
+  gl.uniform2f(progGradient.uniforms.texelSize, velocity.read.texelX, velocity.read.texelY);
+  gl.uniform1i(progGradient.uniforms.uPressure, pressure.read.attach(0));
+  gl.uniform1i(progGradient.uniforms.uVelocity, velocity.read.attach(1));
+  draw(velocity.write); velocity.swap();
+
+  // 平流速度
+  gl.useProgram(progAdvect.program); bindQuad(progAdvect);
+  gl.uniform2f(progAdvect.uniforms.texelSize, velocity.read.texelX, velocity.read.texelY);
+  gl.uniform1i(progAdvect.uniforms.uVelocity, velocity.read.attach(0));
+  gl.uniform1i(progAdvect.uniforms.uSource, velocity.read.attach(0));
+  gl.uniform1f(progAdvect.uniforms.dt, dt);
+  gl.uniform1f(progAdvect.uniforms.dissipation, VEL_DISSIP);
+  draw(velocity.write); velocity.swap();
+
+  // 平流墨色
+  gl.viewport(0,0,dyeW,dyeH);
+  gl.uniform2f(progAdvect.uniforms.texelSize, dye.read.texelX, dye.read.texelY);
+  gl.uniform1i(progAdvect.uniforms.uVelocity, velocity.read.attach(0));
+  gl.uniform1i(progAdvect.uniforms.uSource, dye.read.attach(1));
+  gl.uniform1f(progAdvect.uniforms.dissipation, DYE_DISSIP);
+  draw(dye.write); dye.swap();
+
+  // 墨色自扩散：让晕染幅度更大、边缘更柔，便于层层叠加
+  gl.useProgram(progDiffuse.program); bindQuad(progDiffuse);
+  gl.uniform2f(progDiffuse.uniforms.texelSize, dye.read.texelX, dye.read.texelY);
+  gl.uniform1i(progDiffuse.uniforms.uSource, dye.read.attach(0));
+  gl.uniform1f(progDiffuse.uniforms.amount, DIFFUSE_AMT);
+  draw(dye.write); dye.swap();
+}
+
+function render(){
+  gl.viewport(0,0,canvas.width,canvas.height);
+  gl.useProgram(progDisplay.program); bindQuad(progDisplay);
+  gl.uniform1i(progDisplay.uniforms.uDye, dye.read.attach(0));
+  gl.uniform2f(progDisplay.uniforms.resolution, canvas.width, canvas.height);
+  draw(null);
+}
+
+// 当前墨色（颜料色）。dye 中存的是「吸收 = 1 - 颜料色」
+let currentInk = [0.08, 0.085, 0.10];   // 默认 墨黑
+
+// 只注速度（拖动插值时每个细分点都给速度，保证连贯流动）
+function splatVelocity(x, y, dx, dy){
+  gl.viewport(0,0,simW,simH);
+  gl.useProgram(progSplat.program); bindQuad(progSplat);
+  gl.uniform1i(progSplat.uniforms.uTarget, velocity.read.attach(0));
+  gl.uniform1f(progSplat.uniforms.aspectRatio, canvas.width/canvas.height);
+  gl.uniform2f(progSplat.uniforms.point, x, y);
+  gl.uniform3f(progSplat.uniforms.color, dx, dy, 0.0);
+  gl.uniform1f(progSplat.uniforms.radius, 0.00012);
+  draw(velocity.write); velocity.swap();
+}
+
+// 只注墨（彩色吸收量；radius 越大晕得越开）
+function splatInk(x, y, amount, radius){
+  const a = amount;
+  gl.viewport(0,0,dyeW,dyeH);
+  gl.useProgram(progSplat.program); bindQuad(progSplat);
+  gl.uniform1i(progSplat.uniforms.uTarget, dye.read.attach(0));
+  gl.uniform1f(progSplat.uniforms.aspectRatio, canvas.width/canvas.height);
+  gl.uniform2f(progSplat.uniforms.point, x, y);
+  // 吸收量 = (1 - 颜料色) * 浓度
+  gl.uniform3f(progSplat.uniforms.color,
+    (1.0-currentInk[0])*a, (1.0-currentInk[1])*a, (1.0-currentInk[2])*a);
+  gl.uniform1f(progSplat.uniforms.radius, radius);
+  draw(dye.write); dye.swap();
+}
+
+// Background hover stirs the velocity field; book hover leaves a pale ink trace.
+function injectPointerStroke(from, to, down, bookHover = false){
+  const deltaX = to.x - from.x;
+  const deltaY = to.y - from.y;
+  const distance = Math.hypot(deltaX * canvas.width / Math.max(canvas.height, 1), deltaY);
+  const steps = Math.max(1, Math.ceil(distance / 0.0016));
+  const dx = deltaX * 850;
+  const dy = deltaY * 850;
+  for (let index = 1; index <= steps; index++){
+    const amount = index / steps;
+    const x = from.x + deltaX * amount;
+    const y = from.y + deltaY * amount;
+    splatVelocity(x, y, dx * (down ? 1 : 0.32), dy * (down ? 1 : 0.32));
+    if (down) splatInk(x, y, 0.052, 0.00034);
+    else if (bookHover) splatInk(x, y, 0.006, 0.00016);
+  }
+}
+function releasePointerInk(x, y){
+  splatInk(x, y, 0.12, 0.00078);
+  for (let index = 0; index < 10; index++){
+    const angle = index / 10 * Math.PI * 2;
+    splatVelocity(x, y, Math.cos(angle) * 48, Math.sin(angle) * 48);
+  }
+}
+let pointerState = null;
+window.addEventListener('message', event => {
+  if (event.source !== parent || !event.data) return;
+  const data = event.data;
+  if (data.type === 'background-enabled') { setBackgroundEnabled(data.enabled); return; }
+  if (!backgroundEnabled || document.hidden) return;
+  if (data.type === 'heritage-pointer-leave' || data.type === 'heritage-pointer-cancel'){
+    pointerState = null;
+    return;
+  }
+  if (!['heritage-pointer-start','heritage-pointer-move','heritage-pointer-end'].includes(data.type)) return;
+  const point = { x: Math.max(0, Math.min(1, Number(data.x) || 0)), y: Math.max(0, Math.min(1, Number(data.y) || 0)) };
+  if (data.type === 'heritage-pointer-start'){
+    pointerState = { ...point, down: true, surface: data.surface || 'background' };
+    if (pointerState.surface !== 'book') releasePointerInk(point.x, point.y);
+    return;
+  }
+  if (data.type === 'heritage-pointer-move'){
+    const previous = pointerState;
+    if (previous && (data.dx || data.dy)){
+      const onBook = previous.surface === 'book' || data.surface === 'book';
+      injectPointerStroke(previous, point, Boolean(previous.down) && !onBook, onBook);
+      pointerState = { ...point, down: Boolean(previous.down), surface: data.surface || previous.surface };
+    } else pointerState = { ...point, down: false, surface: data.surface || 'background' };
+    return;
+  }
+  pointerState = null;
+});
+
+// Audio was removed for the silent museum background.
+
+// ============================================================
+//  UI
+// ============================================================
+// 国画色卡：名称 + 颜料色 (0..1)
+const INKS = [
+  { name: '墨',   rgb: [0.08, 0.085, 0.10], css: '#16181c' },
+  { name: '朱砂', rgb: [0.78, 0.20, 0.12], css: '#c4331f' },
+  { name: '赭石', rgb: [0.62, 0.36, 0.20], css: '#9e5c33' },
+  { name: '藤黄', rgb: [0.92, 0.72, 0.16], css: '#e8b728' },
+  { name: '石绿', rgb: [0.20, 0.55, 0.42], css: '#338c6b' },
+  { name: '花青', rgb: [0.13, 0.30, 0.55], css: '#214d8c' },
+];
+const swEl = document.getElementById('swatches');
+INKS.forEach((ink, i) => {
+  const d = document.createElement('div');
+  d.className = 'sw' + (i === 0 ? ' active' : '');
+  d.style.background = ink.css;
+  d.title = ink.name;
+  d.addEventListener('click', () => {
+    currentInk = ink.rgb;
+    [...swEl.children].forEach(c => c.classList.remove('active'));
+    d.classList.add('active');
+  });
+  swEl.appendChild(d);
+});
+
+document.getElementById('clear').addEventListener('click', () => {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dye.read.fbo); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dye.write.fbo); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, velocity.read.fbo); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, velocity.write.fbo); gl.clear(gl.COLOR_BUFFER_BIT);
+});
+
+const hint = document.getElementById('hint');
+let hinted = false;
+function hideHint(){ if(hinted) return; hinted = true; hint.style.opacity = '0'; }
+
+// ============================================================
+//  主循环
+// ============================================================
+function resize(){ initFramebuffers(); }
+window.addEventListener('resize', () => { clearTimeout(window.__rt); window.__rt = setTimeout(resize, 200); });
+
+initFramebuffers();
+
+
+let backgroundEnabled = true;
+let frameRequest = 0;
+function scheduleLoop(){
+  if (backgroundEnabled && !document.hidden && !frameRequest) frameRequest = requestAnimationFrame(loop);
+}
+function setBackgroundEnabled(enabled){
+  backgroundEnabled = Boolean(enabled);
+  if (!backgroundEnabled && frameRequest){ cancelAnimationFrame(frameRequest); frameRequest = 0; }
+  if (backgroundEnabled){ lastTime = performance.now(); scheduleLoop(); }
+}
+window.addEventListener('message', event => {
+  if (event.source === parent && event.data?.type === 'background-enabled') setBackgroundEnabled(event.data.enabled);
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) { if (frameRequest) cancelAnimationFrame(frameRequest); frameRequest = 0; } else scheduleLoop(); });
+
+function loop(){
+  frameRequest = 0;
+  if (!backgroundEnabled || document.hidden) return;
+  const now = performance.now();
+  let dt = (now - lastTime)/1000; lastTime = now;
+  dt = Math.min(dt, 0.016);
+
+  step(dt * 2.2);
+  render();
+  scheduleLoop();
+}
+scheduleLoop();
+</script>
+</body>
+</html>
+
+<!--
+MIT License
+
+Copyright (c) 2026 YijiaDuan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->

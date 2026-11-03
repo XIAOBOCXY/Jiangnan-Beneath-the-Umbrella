@@ -44,10 +44,12 @@ export class CompositionZones {
 
   getByName(name) { return ZONES.find((zone) => zone.name === name) || ZONES[1]; }
 
-  clampOrbit(radius, zoneName) {
+  clampOrbit(radius, zoneName, workspaceMaximum = null) {
     const zone = this.getByName(zoneName);
     const inset = Math.min(9, (zone.max - zone.min) * this.radius * .2);
-    return Math.max(zone.min * this.radius + inset, Math.min(zone.max * this.radius - inset, radius));
+    const minimum = zone.min * this.radius + inset;
+    const maximum = workspaceMaximum === null ? zone.max * this.radius - inset : Math.max(minimum, workspaceMaximum);
+    return Math.max(minimum, Math.min(maximum, radius));
   }
 
   drawGuides(ctx) {

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 280" role="img" aria-label="三潭印月湖景伞面图案的矢量复绘">
+  <path d="M42 150Q85 104 129 137Q180 76 221 125Q271 80 313 130Q362 96 397 143L397 184Q347 166 302 190Q260 169 220 191Q172 169 126 194Q82 169 42 187Z" fill="#78928a" opacity=".62"/>
+  <path d="M51 161Q91 124 131 153Q178 101 220 140Q266 106 310 145Q357 117 388 155" fill="none" stroke="#365c58" stroke-width="5" stroke-linecap="round"/>
+  <g fill="#344f48" stroke="#f1e7d2" stroke-width="2">
+    <g transform="translate(124 93)"><path d="M-15 16h30v34h-30z"/><path d="M-22 16 0 3l22 13Z"/><path d="M-9 3 0-10 9 3Z"/><path d="M-6 27h12v23H-6z" fill="#d8bd83"/></g>
+    <g transform="translate(220 83) scale(1.08)"><path d="M-15 16h30v34h-30z"/><path d="M-22 16 0 3l22 13Z"/><path d="M-9 3 0-10 9 3Z"/><path d="M-6 27h12v23H-6z" fill="#d8bd83"/></g>
+    <g transform="translate(316 93)"><path d="M-15 16h30v34h-30z"/><path d="M-22 16 0 3l22 13Z"/><path d="M-9 3 0-10 9 3Z"/><path d="M-6 27h12v23H-6z" fill="#d8bd83"/></g>
+  </g>
+  <path d="M52 204q22-11 44 0t44 0 44 0 44 0 44 0 44 0 44 0 44 0" fill="none" stroke="#527b7b" stroke-width="5" stroke-linecap="round"/>
+  <path d="M67 223q22-10 44 0t44 0 44 0 44 0 44 0 44 0 44 0" fill="none" stroke="#b48d66" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="220" cy="62" r="8" fill="#c87e6d"/><path d="M220 48v-14" stroke="#c87e6d" stroke-width="3" stroke-linecap="round"/>
+</svg>

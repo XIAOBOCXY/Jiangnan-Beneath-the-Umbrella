@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 360" role="img" aria-label="绿色绸伞花枝实物纹样的矢量复绘">
+  <path d="M51 315Q143 256 185 184T356 42" fill="none" stroke="#496b45" stroke-width="11" stroke-linecap="round"/>
+  <g fill="#71935e" stroke="#496b45" stroke-width="3">
+    <path d="M113 277Q58 249 86 216Q129 225 113 277Z"/><path d="M149 241Q109 195 144 177Q177 203 149 241Z"/>
+    <path d="M184 188Q142 153 171 129Q208 147 184 188Z"/><path d="M225 145Q212 93 251 89Q275 124 225 145Z"/>
+    <path d="M268 108Q273 57 309 68Q322 110 268 108Z"/><path d="M301 82Q322 40 351 65Q345 106 301 82Z"/>
+  </g>
+  <g fill="#faf5e7" stroke="#a78966" stroke-width="3">
+    <g transform="translate(120 207)"><ellipse cy="-22" rx="12" ry="26"/><ellipse cx="21" cy="-7" rx="12" ry="26" transform="rotate(70 21 -7)"/><ellipse cx="13" cy="17" rx="12" ry="26" transform="rotate(145 13 17)"/><ellipse cx="-13" cy="17" rx="12" ry="26" transform="rotate(215 -13 17)"/><ellipse cx="-21" cy="-7" rx="12" ry="26" transform="rotate(290 -21 -7)"/><circle r="9" fill="#d7a54b" stroke="#a87b37"/></g>
+    <g transform="translate(214 135) scale(.78)"><ellipse cy="-22" rx="12" ry="26"/><ellipse cx="21" cy="-7" rx="12" ry="26" transform="rotate(70 21 -7)"/><ellipse cx="13" cy="17" rx="12" ry="26" transform="rotate(145 13 17)"/><ellipse cx="-13" cy="17" rx="12" ry="26" transform="rotate(215 -13 17)"/><ellipse cx="-21" cy="-7" rx="12" ry="26" transform="rotate(290 -21 -7)"/><circle r="9" fill="#d7a54b" stroke="#a87b37"/></g>
+    <g transform="translate(307 79) scale(.63)"><ellipse cy="-22" rx="12" ry="26"/><ellipse cx="21" cy="-7" rx="12" ry="26" transform="rotate(70 21 -7)"/><ellipse cx="13" cy="17" rx="12" ry="26" transform="rotate(145 13 17)"/><ellipse cx="-13" cy="17" rx="12" ry="26" transform="rotate(215 -13 17)"/><ellipse cx="-21" cy="-7" rx="12" ry="26" transform="rotate(290 -21 -7)"/><circle r="9" fill="#d7a54b" stroke="#a87b37"/></g>
+  </g>
+  <g fill="#d77a70"><circle cx="84" cy="293" r="5"/><circle cx="168" cy="176" r="5"/><circle cx="268" cy="100" r="4"/><circle cx="335" cy="47" r="4"/></g>
+</svg>

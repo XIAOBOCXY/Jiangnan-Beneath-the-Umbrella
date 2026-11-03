@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 360" role="img" aria-label="多色绸伞花卉纹样中的花簇与叶片复绘">
+  <path d="M53 302Q136 276 169 209T322 62M141 240Q99 203 73 182M194 179Q241 175 273 146M246 115Q232 81 238 51" fill="none" stroke="#436b4b" stroke-width="9" stroke-linecap="round"/>
+  <g fill="#6e965e" stroke="#436b4b" stroke-width="3">
+    <path d="M95 196Q60 149 98 135Q130 159 95 196Z"/><path d="M130 257Q87 258 91 225Q122 213 130 257Z"/>
+    <path d="M228 180Q238 134 272 150Q263 180 228 180Z"/><path d="M259 152Q266 111 300 119Q295 151 259 152Z"/>
+    <path d="M225 93Q198 62 224 42Q248 61 225 93Z"/>
+  </g>
+  <g stroke="#9d6257" stroke-width="2.5">
+    <g transform="translate(175 205)" fill="#e9a2a0"><ellipse cy="-18" rx="10" ry="21"/><ellipse cx="18" cy="-5" rx="10" ry="21" transform="rotate(65 18 -5)"/><ellipse cx="11" cy="15" rx="10" ry="21" transform="rotate(140 11 15)"/><ellipse cx="-11" cy="15" rx="10" ry="21" transform="rotate(220 -11 15)"/><ellipse cx="-18" cy="-5" rx="10" ry="21" transform="rotate(295 -18 -5)"/><circle r="7" fill="#d6a64c"/></g>
+    <g transform="translate(301 132) scale(.72)" fill="#f0c880"><ellipse cy="-18" rx="10" ry="21"/><ellipse cx="18" cy="-5" rx="10" ry="21" transform="rotate(65 18 -5)"/><ellipse cx="11" cy="15" rx="10" ry="21" transform="rotate(140 11 15)"/><ellipse cx="-11" cy="15" rx="10" ry="21" transform="rotate(220 -11 15)"/><ellipse cx="-18" cy="-5" rx="10" ry="21" transform="rotate(295 -18 -5)"/><circle r="7" fill="#b9685d"/></g>
+    <g transform="translate(232 84) scale(.62)" fill="#f5eee0"><ellipse cy="-18" rx="10" ry="21"/><ellipse cx="18" cy="-5" rx="10" ry="21" transform="rotate(65 18 -5)"/><ellipse cx="11" cy="15" rx="10" ry="21" transform="rotate(140 11 15)"/><ellipse cx="-11" cy="15" rx="10" ry="21" transform="rotate(220 -11 15)"/><ellipse cx="-18" cy="-5" rx="10" ry="21" transform="rotate(295 -18 -5)"/><circle r="7" fill="#d6a64c"/></g>
+  </g>
+  <g fill="#cf655e"><circle cx="119" cy="245" r="5"/><circle cx="76" cy="179" r="4"/><circle cx="326" cy="86" r="4"/></g>
+</svg>

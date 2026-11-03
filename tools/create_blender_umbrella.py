@@ -17,15 +17,15 @@ OUT_DIR = os.path.join(ROOT, "assets", "models")
 BLEND_PATH = os.path.join(OUT_DIR, "west-lake-umbrella.blend")
 GLB_PATH = os.path.join(OUT_DIR, "west-lake-umbrella.glb")
 RADIUS = 1.76
-APEX = 0.58
-RIB_COUNT = 32
+APEX = 0.4
+RIB_COUNT = 36
 CANOPY_RADIAL_STEPS = 88
 # The cloth and every long split-bamboo rib share one folded target path.
 FOLD_ANGLE = 1.21
 FOLDED_BUNDLE_RADIUS = 0.075
-# Stop just inside the stitched perimeter so the bamboo does not project past
-# the cloth edge, but still forms a long, continuous closed bundle.
-RIB_TIP_RADIUS = 87 / CANOPY_RADIAL_STEPS
+# Let each pale bamboo rib pass just beyond the silk hem, as on the physical
+# umbrella; the same rib still gathers into the shared closed bamboo bundle.
+RIB_TIP_RADIUS = 1.025
 FRAME_OPEN = 1
 FRAME_CLOSED = 37
 
@@ -59,9 +59,9 @@ def make_material(name, color, roughness=0.72, metallic=0.0, sheen=0.0):
 
 
 def canopy_point(radius, angle):
-    rib_pleat = math.cos(angle * RIB_COUNT) * 0.021 * radius ** 1.72
+    rib_pleat = math.cos(angle * RIB_COUNT) * 0.013 * radius ** 1.72
     secondary = math.sin(angle * 2.3 + 0.6) * 0.0022 + math.cos(angle * 5.1) * 0.0012
-    edge_roll = -0.038 * smoothstep(0.86, 1.0, radius)
+    edge_roll = -0.024 * smoothstep(0.86, 1.0, radius)
     height = APEX * (1 - radius * radius) + rib_pleat + secondary * radius ** 1.72 + edge_roll
     edge_wave = 0.004 * math.cos(angle * RIB_COUNT) * radius ** 8
     return Vector((math.cos(angle) * (RADIUS * radius + edge_wave), math.sin(angle) * (RADIUS * radius + edge_wave), height))
@@ -524,11 +524,11 @@ def build_model():
         seam_sample_radii = tuple(index / CANOPY_RADIAL_STEPS for index in range(3, 86))
         for panel_radius in rib_sample_radii:
             point = canopy_point(panel_radius, angle)
-            inner = point + Vector((0, 0, -0.014))
+            inner = point + Vector((0, 0, 0.012))
             line.append(tuple(base_quat.inverted() @ (inner - Vector((0, 0, APEX)))))
         for panel_radius in seam_sample_radii:
             point = canopy_point(panel_radius, angle)
-            outer = point + Vector((0, 0, 0.0018))
+            outer = point + Vector((0, 0, 0.018))
             seam_line.append(tuple(base_quat.inverted() @ (outer - Vector((0, 0, APEX)))))
         rib_width = 0.014
         rib_thickness = 0.006

@@ -166,6 +166,7 @@ export class InkFluidSystem {
       uniform vec4 uSplatInk[${MAX_SPLATS_PER_PASS}];
       uniform vec4 uSplatFlow[${MAX_SPLATS_PER_PASS}];
       uniform vec4 uSplatAux[${MAX_SPLATS_PER_PASS}];
+      uniform vec2 uSplatTip[${MAX_SPLATS_PER_PASS}];
       vec2 decodeVelocity(vec2 value){return uHalfFloat>0.5?value:(value-0.5019608)*(2.0*uVelocityRange);}
       vec2 encodeVelocity(vec2 value){return uHalfFloat>0.5?value:clamp(value/(2.0*uVelocityRange)+0.5019608,0.0,1.0);}
       float decodeScalar(float value){return uHalfFloat>0.5?value:(value-0.5019608)*(2.0*uScalarRange);}
@@ -179,7 +180,7 @@ export class InkFluidSystem {
         vec2 high=max(a,b)+margin;
         return p.x>=low.x&&p.y>=low.y&&p.x<=high.x&&p.y<=high.y;
       }
-      float segmentStamp(vec2 uv, vec4 path, float radius, float grain, float seed, float speed, float pressure, float water){
+      float segmentStamp(vec2 uv, vec4 path, float radius, float grain, float seed, float speed, float pressure, float water, vec2 tip){
         vec2 p=uv*vec2(uAspect,1.0);
         vec2 a=path.xy*vec2(uAspect,1.0);
         vec2 b=path.zw*vec2(uAspect,1.0);
@@ -189,8 +190,12 @@ export class InkFluidSystem {
         float angle=length(delta)>0.00001?atan(delta.y,delta.x):seed*6.2831853;
         float wetEdge=smoothstep(0.01,0.16,water);
         float edge=1.0+grain*wetEdge*(0.48*sin(angle*5.0+seed*17.0)+0.32*sin(angle*11.0-seed*9.0)+0.20*sin(angle*17.0+seed*5.0));
-        // Yakudoo uses one speed-responsive line segment for the ink mark.
+        // The soft brush tapers naturally with speed: a slower tip deposits a
+        // fuller body, while a faster gesture leaves a finer line.
+        float softInk=step(0.12,water)*(1.0-step(0.55,water));
+        float softRadius=radius*mix(tip.x,tip.y,t);
         float responsiveRadius=radius*edge*(1.0+speed*0.18)*mix(0.86,1.18,pressure);
+        responsiveRadius=mix(responsiveRadius,softRadius,softInk);
         float fibers=0.68+0.32*(0.5+0.5*sin((uv.x*0.87+uv.y*0.49)*420.0+seed*23.0));
         float fiberAmount=clamp(grain*4.0,0.0,0.78);
         float distanceToStroke=length(delta);
@@ -198,8 +203,15 @@ export class InkFluidSystem {
         // antialiased edge so fiber/clean marks stay crisp instead of looking
         // like watercolor even when their grain setting is nonzero.
         float edgeStart=mix(0.94,0.62,wetEdge);
+        edgeStart=mix(edgeStart,0.84,softInk);
         float segment=1.0-smoothstep(responsiveRadius*edgeStart,responsiveRadius,distanceToStroke);
-        return segment*mix(1.0,fibers,fiberAmount);
+        // 仅纤维笔使用明显的干笔断纹；水墨生成、柔墨和清晰笔保持各自原有边缘。
+        float dryTexture=step(0.18,grain)*(1.0-step(0.12,water));
+        float fiberPhase=sin(t*150.0+angle*2.7+seed*27.0);
+        float fiberBreaks=mix(0.12,1.0,smoothstep(-0.58,0.78,fiberPhase));
+        float crossBristles=smoothstep(0.08,0.92,0.5+0.5*sin(angle*13.0+seed*31.0));
+        float dryInk=mix(fiberBreaks,fiberBreaks*crossBristles,0.58);
+        return segment*mix(1.0,fibers,fiberAmount)*mix(1.0,dryInk,dryTexture*0.94);
       }
     `;
     const pass = (extraUniforms, body) => new this.THREE.ShaderMaterial({
@@ -214,6 +226,7 @@ export class InkFluidSystem {
         uSplatInk: { value: new Float32Array(MAX_SPLATS_PER_PASS * 4) },
         uSplatFlow: { value: new Float32Array(MAX_SPLATS_PER_PASS * 4) },
         uSplatAux: { value: new Float32Array(MAX_SPLATS_PER_PASS * 4) },
+        uSplatTip: { value: new Float32Array(MAX_SPLATS_PER_PASS * 2) },
         uAspect: { value: 1 },
         uHalfFloat: { value: this.useHalfFloat ? 1 : 0 },
         uVelocityRange: { value: this.velocityRange },
@@ -239,7 +252,7 @@ export class InkFluidSystem {
           vec4 ink=uSplatInk[i];
           vec4 flow=uSplatFlow[i];
           if(segmentNearPixel(vUv,path,ink.a)){
-            float stamp=segmentStamp(vUv,path,ink.a,uSplatAux[i].x,uSplatAux[i].y,uSplatAux[i].z,uSplatAux[i].w,flow.w)*flow.z;
+            float stamp=segmentStamp(vUv,path,ink.a,uSplatAux[i].x,uSplatAux[i].y,uSplatAux[i].z,uSplatAux[i].w,flow.w,uSplatTip[i])*flow.z;
             velocity+=flow.xy*stamp*2.15;
           }
         }
@@ -263,7 +276,7 @@ export class InkFluidSystem {
           vec4 ink=uSplatInk[i];
           vec4 flow=uSplatFlow[i];
           if(segmentNearPixel(vUv,path,ink.a)){
-            float stamp=segmentStamp(vUv,path,ink.a,uSplatAux[i].x,uSplatAux[i].y,uSplatAux[i].z,uSplatAux[i].w,flow.w)*flow.z*0.82;
+            float stamp=segmentStamp(vUv,path,ink.a,uSplatAux[i].x,uSplatAux[i].y,uSplatAux[i].z,uSplatAux[i].w,flow.w,uSplatTip[i])*flow.z*0.82;
             float nextAlpha=clamp(stamp+alpha*(1.0-stamp),0.0,0.98);
             premultiplied=premultiplied*(1.0-stamp)+ink.rgb*stamp;
             alpha=nextAlpha;
@@ -282,7 +295,7 @@ export class InkFluidSystem {
           vec4 ink=uSplatInk[i];
           vec4 flow=uSplatFlow[i];
           if(segmentNearPixel(vUv,path,ink.a*1.9)){
-            float stamp=segmentStamp(vUv,path,ink.a*1.9,uSplatAux[i].x,uSplatAux[i].y,uSplatAux[i].z,uSplatAux[i].w,flow.w)*flow.z*flow.w;
+            float stamp=segmentStamp(vUv,path,ink.a*1.9,uSplatAux[i].x,uSplatAux[i].y,uSplatAux[i].z,uSplatAux[i].w,flow.w,uSplatTip[i])*flow.z*flow.w;
             wet=max(wet,stamp);
           }
         }
@@ -446,6 +459,7 @@ export class InkFluidSystem {
     const inks = material.uniforms.uSplatInk.value;
     const flows = material.uniforms.uSplatFlow.value;
     const aux = material.uniforms.uSplatAux.value;
+    const tips = material.uniforms.uSplatTip.value;
     paths.fill(0); inks.fill(0); flows.fill(0); aux.fill(0);
     const count = Math.min(MAX_SPLATS_PER_PASS, splats.length);
     for (let index = 0; index < count; index += 1) {
@@ -460,6 +474,8 @@ export class InkFluidSystem {
       flows[pathOffset + 2] = splat.opacity; flows[pathOffset + 3] = splat.water;
       aux[pathOffset] = splat.grain ?? 0.035; aux[pathOffset + 1] = splat.seed ?? 0.5;
       aux[pathOffset + 2] = splat.speed ?? 0; aux[pathOffset + 3] = splat.pressure ?? 0.5;
+      tips[index * 2] = splat.widthStart ?? 1;
+      tips[index * 2 + 1] = splat.widthEnd ?? 1;
     }
     material.uniforms.uSplatCount.value = count;
   }
@@ -505,7 +521,7 @@ export class InkFluidSystem {
     this.displayMaterial.uniforms.uDisplayOpacity.value = this.THREE.MathUtils.clamp(opacity, 0, 1);
   }
 
-  addSplat({ uv, fromUv = uv, force = { x: 0, y: 0 }, color = "#537c7e", radius = 0.018, opacity = 0.45, water = 0.7, grain = 0.035, seed = Math.random() } = {}) {
+  addSplat({ uv, fromUv = uv, force = { x: 0, y: 0 }, color = "#537c7e", radius = 0.018, widthStart = 1, widthEnd = 1, opacity = 0.45, water = 0.7, grain = 0.035, seed = Math.random() } = {}) {
     if (!uv || uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.y > 1 || Math.hypot(uv.x - 0.5, uv.y - 0.5) > 0.5) return;
     const start = fromUv || uv;
     if (start.x < -0.5 || start.x > 1.5 || start.y < -0.5 || start.y > 1.5) return;
@@ -518,12 +534,16 @@ export class InkFluidSystem {
         this.THREE.MathUtils.clamp(force.y || 0, -this.velocityRange, this.velocityRange)
       ),
       color: parsed,
-      radius: this.THREE.MathUtils.clamp(radius, 0.006, 0.09),
+      radius: this.THREE.MathUtils.clamp(radius, widthStart !== 1 || widthEnd !== 1 ? 0.0009 : 0.006, 0.09),
+      widthStart: this.THREE.MathUtils.clamp(widthStart, 0.03, 1.5),
+      widthEnd: this.THREE.MathUtils.clamp(widthEnd, 0.03, 1.5),
       opacity: this.THREE.MathUtils.clamp(opacity, 0, 0.92),
       // A zero-water splat is the dry, crisp brush. Keep zero intact so it
       // creates pigment without injecting wetness or watercolor diffusion.
       water: this.THREE.MathUtils.clamp(water, 0, 1),
-      grain: this.THREE.MathUtils.clamp(grain, 0, 0.24),
+      // Preserve the full dry-brush grain range. Watercolor presets still use
+      // values below 0.1, so their existing output remains unchanged.
+      grain: this.THREE.MathUtils.clamp(grain, 0, 0.8),
       seed: Number.isFinite(seed) ? seed : Math.random()
     });
     this.lastSplatAt = performance.now();
