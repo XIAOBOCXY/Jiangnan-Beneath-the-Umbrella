@@ -534,7 +534,7 @@ export class InkFluidSystem {
         this.THREE.MathUtils.clamp(force.y || 0, -this.velocityRange, this.velocityRange)
       ),
       color: parsed,
-      radius: this.THREE.MathUtils.clamp(radius, widthStart !== 1 || widthEnd !== 1 ? 0.0009 : 0.006, 0.09),
+      radius: this.THREE.MathUtils.clamp(radius, widthStart !== 1 || widthEnd !== 1 ? 0.0009 : 0.006, 0.18),
       widthStart: this.THREE.MathUtils.clamp(widthStart, 0.03, 1.5),
       widthEnd: this.THREE.MathUtils.clamp(widthEnd, 0.03, 1.5),
       opacity: this.THREE.MathUtils.clamp(opacity, 0, 0.92),

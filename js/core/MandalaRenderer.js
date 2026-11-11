@@ -1,5 +1,5 @@
 // MandalaRenderer 同时渲染平滑的放射笔迹和独立可编辑的纹样对象。
-import { ArtworkDocument } from "./ArtworkDocument.js";
+import { ArtworkDocument } from "./ArtworkDocument.js?v=20261111-inspiration-batch-v2";
 import { CompositionZones } from "./CompositionZones.js";
 
 const uid = () => `motif-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -20,6 +20,15 @@ export class MandalaRenderer {
   }
 
   invalidate() { this.dirty.strokes = true; this.dirty.patterns = true; }
+
+  withBatch(callback) {
+    const wasBatching = this.isBatching;
+    const wasSuspended = this.document.suspendHistory;
+    this.isBatching = true;
+    this.document.suspendHistory = true;
+    try { return callback(); }
+    finally { this.isBatching = wasBatching; this.document.suspendHistory = wasSuspended; }
+  }
 
   beginStroke(point, settings) {
     this.document.commit();
@@ -140,6 +149,28 @@ export class MandalaRenderer {
     return this.document.patterns.find((item) => item.id === this.document.selectedId) || null;
   }
 
+  changeSelectedPattern(patternId) {
+    const object = this.getSelected();
+    const asset = this.patternDrawer.getAsset(patternId);
+    if (!object || !asset || object.patternId === patternId) return false;
+    this.document.commit();
+    const displayedSize = object.baseSize * object.scale;
+    object.patternId = patternId;
+    object.baseSize = asset.recommendedSize;
+    object.scale = Math.max(.06, Math.min(displayedSize / object.baseSize, this.getMaxScale(object)));
+    this.reveal.delete(object.id);
+    this.dirty.patterns = true;
+    this.render();
+    this.animateReveal(object.id, "bloom");
+    return true;
+  }
+
+  getSelectedInstance(object = this.getSelected()) {
+    if (!object) return null;
+    const instances = this.getInstances(object);
+    return instances[Math.min(this.selectedInstanceIndex || 0, instances.length - 1)] || null;
+  }
+
   selectAt(point) {
     const objects = [...this.document.patterns].reverse();
     for (const object of objects) {
@@ -188,7 +219,9 @@ export class MandalaRenderer {
   getWorkspaceRadius() { return this.canvasManager.size / 2 - 10; }
 
   getMaxOrbitRadius(object) {
-    return Math.max(0, this.getWorkspaceRadius() - this.getHalfDiagonal(object) - 4);
+    // The artwork is clipped to the silk, but its center may travel right to
+    // the workspace edge, even when most of a large motif lies off the canopy.
+    return this.getWorkspaceRadius();
   }
 
   getMaxCenterDistance(object, direction, boundary = this.getWorkspaceRadius()) {
@@ -212,7 +245,7 @@ export class MandalaRenderer {
     const center = this.canvasManager.center;
     const dx = requestedPoint.x - center.x, dy = requestedPoint.y - center.y;
     const direction = Math.atan2(dy, dx);
-    const distance = Math.min(this.getMaxCenterDistance(object, direction), Math.hypot(dx, dy));
+    const distance = Math.min(this.getWorkspaceRadius(), Math.hypot(dx, dy));
     object.x = center.x + Math.cos(direction) * distance;
     object.y = center.y + Math.sin(direction) * distance;
   }
@@ -255,8 +288,9 @@ export class MandalaRenderer {
       const center = this.canvasManager.center;
       let angle = Math.atan2(object.y - center.y, object.x - center.x);
       let distance = Math.hypot(object.x - center.x, object.y - center.y);
-      // Keep the motif inside the round workspace, while allowing it to cross the canopy hem.
-      const max = this.getMaxCenterDistance(object, angle);
+      // Limit the anchor, not the entire bounding box: a large motif can be
+      // dragged mostly outside the silk while its selection remains editable.
+      const max = this.getWorkspaceRadius();
       distance = Math.min(max, distance);
       object.x = center.x + Math.cos(angle) * distance;
       object.y = center.y + Math.sin(angle) * distance;
@@ -268,7 +302,25 @@ export class MandalaRenderer {
   setRepeat(count, radius = null, { commit = true, animate = true } = {}) {
     const object = this.getSelected();
     if (!object) return false;
-    const requestedCount = Math.max(2, Number(count) || 8);
+    const requestedCount = Math.max(1, Math.min(16, Math.round(Number(count) || 1)));
+    if (requestedCount === 1) {
+      if (object.repeatMode !== "radial") return false;
+      // Keep the selected copy exactly where it is when returning to one.
+      const instance = this.getSelectedInstance(object);
+      if (!instance) return false;
+      if (commit) this.document.commit();
+      object.x = instance.x;
+      object.y = instance.y;
+      object.rotation = instance.rotation;
+      object.repeatMode = "single";
+      object.repeatCount = 1;
+      object.repeatRadius = 0;
+      this.selectedInstanceIndex = 0;
+      this.reveal.delete(object.id);
+      this.dirty.patterns = true;
+      this.render();
+      return true;
+    }
     // 伞心上的单个纹样重复时，进入主装饰带；其他区域保留原半径，
     // 让整圈始终以伞心为轴，而不是跳到区域中点或围绕纹样本身偏移。
     if (object.repeatMode !== "radial" && object.zone === "伞心") object.zone = "中部";
@@ -352,12 +404,11 @@ export class MandalaRenderer {
   }
 
   getMaxScale(object) {
-    // 未开启构图辅助时不按伞缘或重复间距限尺寸，保留宽裕的自由缩放范围。
-    if (!this.showGuides) return 100;
-    return Math.max(.06, this.getMaxMotifSize(object) / Math.max(1, object.baseSize));
+    return Math.max(.06, this.canvasManager.size * 2 / Math.max(1, object.baseSize));
   }
 
   animateReveal(id, kind = "ring") {
+    if (this.isBatching) return;
     const object = this.document.patterns.find((item) => item.id === id);
     if (!object) return;
     const state = {
@@ -403,10 +454,6 @@ export class MandalaRenderer {
   }
 
   constrainGroupSize(object) {
-    if (this.showGuides) {
-      const maxSize = this.getMaxMotifSize(object);
-      object.scale = Math.max(.06, Math.min(object.scale, maxSize / Math.max(1, object.baseSize)));
-    }
     if (object.repeatMode === "radial") {
       object.x = 0;
       object.y = 0;
@@ -570,8 +617,10 @@ export class MandalaRenderer {
     const ratio = image?.naturalWidth / image?.naturalHeight || 1;
     const width = ratio >= 1 ? size : size * ratio;
     const height = ratio >= 1 ? size / ratio : size;
+    const selectedInstance = this.getSelectedInstance(object);
+    const dark = document.getElementById("studioPage")?.classList.contains("is-dark-studio");
     ctx.save();
-    ctx.strokeStyle = "rgba(38,63,58,.72)";
+    ctx.strokeStyle = dark ? "rgba(219,242,222,.8)" : "rgba(38,63,58,.72)";
     ctx.lineWidth = 1.1;
     ctx.setLineDash([4, 4]);
     instances.forEach((instance) => {
@@ -580,9 +629,113 @@ export class MandalaRenderer {
       ctx.restore();
     });
     ctx.restore();
+    if (!selectedInstance) return;
+
+    const controls = this.getSelectionControls(object);
+    const { halfWidth, halfHeight, uiScale } = controls;
+    ctx.save();
+    ctx.translate(selectedInstance.x, selectedInstance.y);
+    ctx.rotate(selectedInstance.rotation);
+    ctx.strokeStyle = dark ? "rgba(224, 244, 225, .96)" : "rgba(31, 82, 68, .92)";
+    ctx.fillStyle = "rgba(249, 246, 234, .94)";
+    ctx.lineWidth = 1.35 * uiScale;
+    ctx.setLineDash([]);
+    ctx.strokeRect(-halfWidth, -halfHeight, halfWidth * 2, halfHeight * 2);
+    ctx.beginPath();
+    ctx.moveTo(0, -halfHeight);
+    ctx.lineTo(0, controls.rotate.localY + 5 * uiScale);
+    ctx.stroke();
+    for (const handle of controls.corners) {
+      ctx.fillRect(handle.localX - 5 * uiScale, handle.localY - 5 * uiScale, 10 * uiScale, 10 * uiScale);
+      ctx.strokeRect(handle.localX - 5 * uiScale, handle.localY - 5 * uiScale, 10 * uiScale, 10 * uiScale);
+    }
+    ctx.beginPath();
+    ctx.arc(controls.rotate.localX, controls.rotate.localY, 7.5 * uiScale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(controls.rotate.localX, controls.rotate.localY, 3.2 * uiScale, -.9, Math.PI * 1.3);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(145, 61, 53, .94)";
+    ctx.beginPath();
+    ctx.arc(controls.remove.localX, controls.remove.localY, 8 * uiScale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.9)";
+    ctx.lineWidth = 1.4 * uiScale;
+    ctx.beginPath();
+    ctx.moveTo(controls.remove.localX - 4 * uiScale, controls.remove.localY - 4 * uiScale);
+    ctx.lineTo(controls.remove.localX + 4 * uiScale, controls.remove.localY + 4 * uiScale);
+    ctx.moveTo(controls.remove.localX + 4 * uiScale, controls.remove.localY - 4 * uiScale);
+    ctx.lineTo(controls.remove.localX - 4 * uiScale, controls.remove.localY + 4 * uiScale);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(45, 105, 86, .9)";
+    for (const handle of [controls.repeatMinus, controls.repeatPlus]) {
+      ctx.beginPath();
+      ctx.arc(handle.localX, handle.localY, 8 * uiScale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#fbf7e9";
+    ctx.font = `600 ${10 * uiScale}px Georgia, serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("−", controls.repeatMinus.localX, controls.repeatMinus.localY);
+    ctx.fillText("+", controls.repeatPlus.localX, controls.repeatPlus.localY);
+    ctx.fillStyle = dark ? "rgba(235, 250, 232, .98)" : "rgba(36, 75, 62, .9)";
+    ctx.font = `500 ${9 * uiScale}px 'Chill HuoKai', serif`;
+    ctx.fillText(`环绕 ×${object.repeatMode === "radial" ? object.repeatCount : 1}`, 0, controls.repeatPlus.localY);
+    ctx.restore();
+  }
+
+  getSelectionControls(object = this.getSelected()) {
+    if (!object) return null;
+    const image = this.patternDrawer.getImage(object.patternId);
+    const size = object.baseSize * object.scale;
+    const ratio = image?.naturalWidth / image?.naturalHeight || 1;
+    const width = ratio >= 1 ? size : size * ratio;
+    const height = ratio >= 1 ? size / ratio : size;
+    const uiScale = Math.max(.8, Math.min(1.65, Math.sqrt(Math.max(width, height) / 180)));
+    const halfWidth = width * .5 + 6 * uiScale;
+    const halfHeight = height * .5 + 6 * uiScale;
+    return {
+      width,
+      height,
+      halfWidth,
+      halfHeight,
+      uiScale,
+      corners: [
+        { name: "resize-nw", localX: -halfWidth, localY: -halfHeight },
+        { name: "resize-ne", localX: halfWidth, localY: -halfHeight },
+        { name: "resize-sw", localX: -halfWidth, localY: halfHeight },
+        { name: "resize-se", localX: halfWidth, localY: halfHeight }
+      ],
+      rotate: { name: "rotate", localX: 0, localY: -halfHeight - 33 * uiScale },
+      repeatMinus: { name: "repeat-minus", localX: -38 * uiScale, localY: halfHeight + 18 * uiScale },
+      repeatPlus: { name: "repeat-plus", localX: 38 * uiScale, localY: halfHeight + 18 * uiScale },
+      remove: { name: "delete", localX: halfWidth + 10 * uiScale, localY: -halfHeight - 10 * uiScale }
+    };
+  }
+
+  hitSelectionControl(point, object = this.getSelected()) {
+    if (!object || !point) return null;
+    const instance = this.getSelectedInstance(object);
+    const controls = this.getSelectionControls(object);
+    if (!instance || !controls) return null;
+    const dx = point.x - instance.x;
+    const dy = point.y - instance.y;
+    const cosine = Math.cos(instance.rotation);
+    const sine = Math.sin(instance.rotation);
+    const localX = dx * cosine + dy * sine;
+    const localY = -dx * sine + dy * cosine;
+    const tolerance = 13 * controls.uiScale;
+    const candidates = [...controls.corners, controls.rotate, controls.repeatMinus, controls.repeatPlus, controls.remove];
+    const hit = candidates.find((handle) =>
+      Math.hypot(localX - handle.localX, localY - handle.localY) <= tolerance
+    );
+    return hit?.name || null;
   }
 
   render({ markTexture = true } = {}) {
+    if (this.isBatching) return;
     const { artCtx, patternCtx, overlayCtx } = this.canvasManager;
     const artworkChanged = this.dirty.strokes || this.dirty.patterns;
     if (this.dirty.strokes) {
@@ -599,7 +752,9 @@ export class MandalaRenderer {
     }
     overlayCtx.clearRect(0, 0, this.canvasManager.size, this.canvasManager.size);
     if (this.showGuides) this.zones.drawGuides(overlayCtx);
-    this.drawSelection(overlayCtx, this.getSelected());
+    const selectionCtx = this.canvasManager.selectionCtx || overlayCtx;
+    if (selectionCtx !== overlayCtx) selectionCtx.clearRect(-this.canvasManager.size, -this.canvasManager.size, this.canvasManager.size * 3, this.canvasManager.size * 3);
+    this.drawSelection(selectionCtx, this.getSelected());
     this.canvasManager.renderScene();
     if (artworkChanged && markTexture) this.canvasManager.markTextureDirty();
   }

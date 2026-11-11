@@ -1,5 +1,5 @@
 const FRAME_URLS = {
-  studio: new URL("../../vendor/integrations/shuimo-liuyun-studio.html?v=20261028-random-pigment-input", import.meta.url).href,
+  studio: new URL("../../vendor/integrations/shuimo-liuyun-studio.html?v=20261110-paper-only-v3", import.meta.url).href,
   heritage: new URL("../../vendor/integrations/ink-water-heritage.html?v=20261029-book-hover-ink", import.meta.url).href
 };
 
@@ -12,6 +12,7 @@ export class InkWashBackground {
     this.mode = "off";
     this.frames = new Map();
     this.pointer = null;
+    this.transitionPaused = false;
     this.reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     this.onPointerMove = (event) => this.relayPointer("move", event);
     this.onPointerDown = (event) => this.relayPointer("down", event);
@@ -21,12 +22,14 @@ export class InkWashBackground {
       this.clearPointer();
     };
     this.onVisibilityChange = () => this.syncFrames();
+    this.onTransitionPhase = (event) => { this.transitionPaused = Boolean(event.detail?.active); this.syncFrames(); };
     window.addEventListener("pointermove", this.onPointerMove, { passive: true });
     window.addEventListener("pointerdown", this.onPointerDown, { passive: true });
     window.addEventListener("pointerup", this.onPointerUp, { passive: true });
     window.addEventListener("pointercancel", this.onPointerUp, { passive: true });
     window.addEventListener("pointerout", this.onPointerLeave, { passive: true });
     document.addEventListener("visibilitychange", this.onVisibilityChange);
+    window.addEventListener("site:ink-transition", this.onTransitionPhase);
     Object.entries(FRAME_URLS).forEach(([route, src]) => this.createFrame(route, src, hostMap[route]));
     this.setSceneMode("off");
   }
@@ -41,7 +44,7 @@ export class InkWashBackground {
     frame.loading = "eager";
     frame.src = src;
     frame.addEventListener("load", () => {
-      this.send(route, { type: "background-enabled", enabled: this.mode === route && !document.hidden });
+      this.send(route, { type: "background-enabled", enabled: this.mode === route && !document.hidden && !this.transitionPaused });
     });
     this.frames.set(route, frame);
     host.append(frame);
@@ -53,9 +56,9 @@ export class InkWashBackground {
 
   syncFrames() {
     for (const [route, frame] of this.frames) {
-      const active = route === this.mode && !document.hidden;
-      frame.classList.toggle("is-active", active);
-      this.send(route, { type: "background-enabled", enabled: active });
+      const visible = route === this.mode && !document.hidden;
+      frame.classList.toggle("is-active", visible);
+      this.send(route, { type: "background-enabled", enabled: visible && !this.transitionPaused });
     }
   }
 
@@ -72,6 +75,9 @@ export class InkWashBackground {
   }
 
   relayPointer(phase, event) {
+    // The studio background is autonomous: pointer input belongs to the tools
+    // and canvas only, never to the decorative ink simulation.
+    if (this.mode === "studio") return;
     if ((this.mode !== "studio" && this.mode !== "heritage") || document.hidden) return;
     const target = event.target instanceof Element ? event.target : null;
     const interactive = target?.closest("button,a,input,select,textarea,[contenteditable='true'],.app-header,.app-sidebar,.site-masthead,.page-nav,.studio-page-nav");
@@ -109,6 +115,7 @@ export class InkWashBackground {
     window.removeEventListener("pointercancel", this.onPointerUp);
     window.removeEventListener("pointerout", this.onPointerLeave);
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
+    window.removeEventListener("site:ink-transition", this.onTransitionPhase);
     this.mode = "off";
     this.syncFrames();
     for (const frame of this.frames.values()) frame.remove();

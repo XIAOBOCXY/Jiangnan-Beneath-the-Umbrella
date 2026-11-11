@@ -1,9 +1,11 @@
-import { CanvasManager } from "../core/CanvasManager.js?v=20261102-silk-dye-v15";
-import { MandalaRenderer } from "../core/MandalaRenderer.js?v=20261101-silk-craft-v3";
-import { PatternDrawer } from "../drawing/PatternDrawer.js?v=20261101-silk-craft-v3";
-import { TemplateComposer } from "../features/TemplateComposer.js";
-import { ArtworkGalleryStore } from "../features/ArtworkGalleryStore.js?v=20261101-silk-craft-v3";
-import { ControlManager } from "../ui/ControlManager.js?v=20261102-silk-dye-v10";
+import * as THREE from "three";
+import { CanvasManager } from "../core/CanvasManager.js?v=20261111-neutral-dye-v1";
+import { MandalaRenderer } from "../core/MandalaRenderer.js?v=20261111-inspiration-batch-v6";
+import { PatternDrawer } from "../drawing/PatternDrawer.js?v=20261111-motif-counts-v5";
+import { TemplateComposer } from "../features/TemplateComposer.js?v=20261111-empty-start-v10";
+import { ArtworkGalleryStore } from "../features/ArtworkGalleryStore.js?v=20261111-gallery-color-v5";
+import { ControlManager } from "../ui/ControlManager.js?v=20261111-motif-inspiration-v8";
+import { MOTIF_LIBRARY } from "../drawing/MotifLibrary.js?v=20261111-motif-counts-v5";
 
 const INK_PRESETS = {
   // Dry presets inject pigment only. The shader keeps their edges crisp;
@@ -26,7 +28,10 @@ export class App {
     this.controls = new ControlManager();
     this.patternDrawer = new PatternDrawer((drawer) => this.controls.setAssetStates(drawer));
     this.renderer = new MandalaRenderer(this.canvasManager, this.patternDrawer);
-    this.canvasManager.onResize = () => { this.renderer.invalidate(); this.renderer.render(); };
+    this.canvasManager.onResize = () => {
+      this.renderer.invalidate();
+      this.renderer.render();
+    };
     this.templateComposer = new TemplateComposer(this.canvasManager, this.patternDrawer);
     this.mode = "fabric";
     this.viewMode = "2d";
@@ -58,7 +63,7 @@ export class App {
       this.isReady = true;
       this.canvasManager.canvas.classList.remove("is-loading");
       this.updateReadouts();
-      this.showMessage("荷韵西湖示例已载入");
+      this.showMessage("新作已准备好");
       this.warmFluidPreview();
       return this;
     });
@@ -113,6 +118,9 @@ export class App {
     document.querySelectorAll("[data-fabric-color]").forEach((button) => button.addEventListener("click", () => {
       this.controls.setFabricColor(button.dataset.fabricColor); this.refreshBase(); this.refreshThreeTexture(true);
     }));
+    document.getElementById("fabricColorPicker")?.addEventListener("input", (event) => {
+      this.controls.setFabricColor(event.target.value); this.refreshBase(); this.refreshThreeTexture(true);
+    });
     this.controls.elements.patternCarousel?.addEventListener("click", (event) => {
       const card = event.target.closest("[data-pattern]");
       if (!card || card.disabled || !this.controls.setPattern(card.dataset.pattern)) return;
@@ -134,13 +142,14 @@ export class App {
 
   onCanvasWheel(event) {
     if (this.viewMode !== "2d") return;
+    cancelAnimationFrame(this.viewFitFrame);
     event.preventDefault();
     const stageRect = this.canvasStage.getBoundingClientRect();
     const pointerX = event.clientX - (stageRect.left + stageRect.width * 0.5);
     const pointerY = event.clientY - (stageRect.top + stageRect.height * 0.5);
     const previousZoom = this.canvasManager.viewZoom;
     const zoomFactor = Math.exp(-event.deltaY * 0.0015);
-    const nextZoom = Math.max(0.6, Math.min(18, previousZoom * zoomFactor));
+    const nextZoom = Math.max(0.35, Math.min(18, previousZoom * zoomFactor));
     const ratio = nextZoom / previousZoom;
     // Keep the point under the pointer in place while zooming, so users can
     // inspect any part of the umbrella instead of only enlarging its center.
@@ -151,9 +160,25 @@ export class App {
 
   bindActionEvents() {
     const { elements } = this.controls;
+    const studioPage = document.getElementById("studioPage");
+    const panel = document.getElementById("studioControls");
+    const panelToggle = document.getElementById("studioPanelToggle");
+    panelToggle?.addEventListener("click", () => {
+      const collapsed = studioPage.classList.toggle("is-panel-collapsed");
+      panel.inert = collapsed;
+      panelToggle.setAttribute("aria-expanded", String(!collapsed));
+      panelToggle.setAttribute("aria-label", collapsed ? "展开创作工具" : "收起创作工具");
+      panelToggle.querySelector("span").textContent = collapsed ? "展卷" : "收卷";
+      this.threePreview?.setStudioPanelCollapsed(collapsed);
+      if (collapsed && this.viewMode === "2d") this.animateCanvasView(this.canvasManager.viewZoom, 0, 0);
+    });
+    studioPage.classList.remove("is-dark-studio");
+    document.documentElement.classList.remove("studio-dark-background");
+    try { localStorage.removeItem("studio-theme"); } catch (_) {}
+    this.renderer.render({ markTexture: false });
     elements.randomBtn.addEventListener("click", () => {
       if (!this.isReady) return;
-      this.controls.randomize(); this.refreshBase(); this.showMessage("灵感已更新");
+      this.generateInspiration();
     });
     elements.clearBtn.addEventListener("click", () => {
       if (!this.isReady) return;
@@ -163,27 +188,15 @@ export class App {
     elements.saveBtn.addEventListener("click", async () => {
       if (!this.isReady) return;
       try {
-        if (this.threePreview) this.canvasManager.setFluidSnapshot(this.threePreview.captureFluidSnapshot());
-        const artwork = this.galleryStore.saveCanvas(this.createGalleryTextureCanvas());
+        const artwork = this.saveCurrentArtwork();
         window.dispatchEvent(new CustomEvent("gallery:updated", { detail: artwork }));
-        this.showMessage("作品已存入本地画廊");
+        this.showMessage("作品已存入悬伞画廊");
       } catch (error) {
         this.showMessage(error.message || "作品保存失败");
       }
     });
     elements.undoBtn.addEventListener("click", () => this.undo());
     elements.redoBtn.addEventListener("click", () => this.redo());
-    elements.repeatBtn.addEventListener("click", () => {
-      if (!this.renderer.getSelected()) return;
-      this.renderer.setRepeat(Number(elements.repeatCount.value));
-      this.updateSelectionControls();
-      this.showMessage("环形纹样已生成");
-    });
-    elements.deletePatternBtn.addEventListener("click", () => {
-      if (!this.renderer.deleteSelected()) return;
-      this.updateSelectionControls();
-      this.showMessage("纹样已删除");
-    });
     const audioButton = document.getElementById("audioReactiveBtn");
     audioButton.addEventListener("click", async () => {
       try {
@@ -215,6 +228,77 @@ export class App {
         this.renderer.deleteSelected(); this.updateSelectionControls();
       }
     });
+  }
+
+  generateInspiration() {
+    window.clearTimeout(this.fluidSealTimer);
+    // Record one undo checkpoint; individual marks in this transaction do not
+    // serialize the growing artwork or start their own reveal animations.
+    this.renderer.document.commit();
+    const pattern = this.controls.randomize();
+    const primary = MOTIF_LIBRARY.find((asset) => asset.id === pattern);
+    const candidates = MOTIF_LIBRARY.filter((asset) => !asset.legacy && asset.id !== pattern && asset.categoryId === primary?.categoryId && this.controls.assetStates.get(asset.id) === "ready");
+    const update = () => {
+      this.renderer.withBatch(() => {
+        this.renderer.clear();
+        this.pendingFluidSplats.length = 0;
+        this.threePreview?.clearFluid();
+        this.threePreview?.setInkOpacity(1);
+        this.canvasManager.setFluidSnapshot(null);
+        const chosen = [pattern];
+        if (candidates.length && Math.random() > .25) chosen.push(candidates[Math.floor(Math.random() * candidates.length)].id);
+        const layoutAngle = Math.random() * Math.PI * 2;
+        chosen.forEach((id, index) => {
+          const angle = layoutAngle + (index ? 0 : Math.PI);
+          const distance = this.canvasManager.radius * (index ? .53 : .10);
+          const point = { x: this.canvasManager.center.x + Math.cos(angle) * distance, y: this.canvasManager.center.y + Math.sin(angle) * distance };
+          const object = this.renderer.addPattern(id, point, { snap: false });
+          if (object) {
+            object.scale *= index ? .46 + Math.random() * .15 : .85 + Math.random() * .18;
+            object.rotation = (Math.random() - .5) * .32;
+          }
+        });
+        const settings = { ...this.controls.getSettings(), gpuInk: true, brushStyle: "fluid", segments: 1, mirror: false };
+        const splats = [];
+        for (let line = 0; line < 5; line += 1) {
+          const angle = layoutAngle + line * Math.PI * 2 / 5 + (Math.random() - .5) * .25;
+          const startRadius = .22 + Math.random() * .07;
+          const pointAt = (t) => ({ x: .5 + Math.cos(angle + t * .38) * (startRadius + t * .10), y: .5 + Math.sin(angle + t * .38) * (startRadius + t * .10) });
+          let previous = pointAt(0);
+          const point = { x: this.canvasManager.center.x + (previous.x - .5) * this.canvasManager.radius * 2, y: this.canvasManager.center.y - (previous.y - .5) * this.canvasManager.radius * 2 };
+          const stroke = this.renderer.beginStroke(point, settings);
+          const lineSplats = [];
+          for (let step = 1; step <= 6; step += 1) {
+            const uv = pointAt(step / 6);
+            lineSplats.push({ uv, fromUv: previous, force: { x: 0, y: 0 }, color: settings.color, radius: .015 + Math.random() * .01, opacity: .48, water: .45, grain: .08, seed: Math.random() });
+            this.renderer.extendStroke({ x: this.canvasManager.center.x + (uv.x - .5) * this.canvasManager.radius * 2, y: this.canvasManager.center.y - (uv.y - .5) * this.canvasManager.radius * 2 }, settings);
+            previous = uv;
+          }
+          this.renderer.appendFluidSplats(stroke.id, lineSplats);
+          this.renderer.endStroke();
+          splats.push(...lineSplats);
+        }
+        const paint = splats.flatMap((splat) => this.expandInkSplat(splat, settings));
+        if (this.threePreview) this.threePreview.injectInks(paint);
+        else {
+          this.pendingFluidSplats.push(...paint);
+          // Initialization already drains the pending marks and sets up the
+          // current host. Repeating those steps forced another render/resize.
+          void this.ensureThreePreview().catch((error) => {
+            console.warn("灵感水墨初始化失败", error);
+            this.showMessage("水墨模块未能启动");
+          });
+        }
+        this.threePreview?.setFabricMaterial(settings.fabricMaterial);
+      });
+      this.renderer.document.selectedId = null;
+      this.renderer.selectedInstanceIndex = 0;
+      this.refreshBase();
+    };
+    if (this.threePreview) this.threePreview.withRenderBatch(update);
+    else update();
+    this.updateSelectionControls({ render: false });
+    this.showMessage("已生成新的伞面、纹样与水墨组合");
   }
 
   async downloadCanvas(canvas, filename) {
@@ -256,7 +340,7 @@ export class App {
   async ensureThreePreview() {
     if (this.threePreview) return this.threePreview;
     if (!this.fluidInitPromise) {
-      this.fluidInitPromise = import("../rendering/ThreeUmbrellaPreview.js?v=20261102-studio-fabric-v29").then(({ ThreeUmbrellaPreview }) => {
+      this.fluidInitPromise = import("../rendering/ThreeUmbrellaPreview.js?v=20261111-lantern-default-v1").then(({ ThreeUmbrellaPreview }) => {
         const preview = new ThreeUmbrellaPreview(document.getElementById("threeHost"));
         preview.setFabricMaterial(this.controls.getSettings().fabricMaterial);
         preview.onFoldProgress = (progress) => this.updateFoldControls(progress);
@@ -292,10 +376,10 @@ export class App {
   async ensureBundledUmbrella() {
     const preview = await this.ensureThreePreview();
     if (preview.modelKind === "glb" || this.bundledModelPromise) return this.bundledModelPromise || preview;
-    const bundledModelUrl = new URL("../../assets/models/west-lake-umbrella.glb", import.meta.url);
+    const bundledModelUrl = new URL("../../assets/models/west-lake-umbrella.glb?v=20261105-silk-linkage-v2", import.meta.url);
     // Bust the browser cache when the bundled Blender model is regenerated;
     // otherwise a reload can keep showing the old rib-only fold animation.
-    bundledModelUrl.searchParams.set("v", "20261022-folded-bamboo-bundle-v2");
+    bundledModelUrl.searchParams.set("v", "20261105-silk-linkage-v2");
     this.bundledModelPromise = preview.loadGLBURL(bundledModelUrl.href)
       .then((result) => {
         console.info("Blender 绸伞模型已载入", result);
@@ -308,27 +392,49 @@ export class App {
     return this.bundledModelPromise;
   }
 
-  createGalleryTextureCanvas() {
-    // Store the stable UV artwork, including the last wet-ink snapshot, without
-    // editor guides or bamboo structure. Keep the canopy crop aligned to the
-    // same circular source region used by the live CanvasTexture.
-    const source = this.canvasManager.createExportCanvas({ includeStructure: false, includeFluid: true });
-    const scale = source.width / this.canvasManager.size;
-    const center = this.canvasManager.center;
-    const radius = this.canvasManager.radius;
-    const texture = document.createElement("canvas");
-    texture.width = 640;
-    texture.height = 640;
-    texture.getContext("2d").drawImage(
-      source,
-      (center.x - radius) * scale, (center.y - radius) * scale,
-      radius * 2 * scale, radius * 2 * scale,
-      0, 0, texture.width, texture.height
+  saveCurrentArtwork() {
+    const settings = { ...this.controls.getSettings() };
+    if (this.threePreview) this.canvasManager.setFluidSnapshot(this.threePreview.captureFluidSnapshot());
+    return this.galleryStore.saveCanvas(
+      this.createGalleryTextureCanvas(settings),
+      this.renderer.getDocument(),
+      settings.fabricMaterial,
+      settings
     );
+  }
+
+  createGalleryTextureCanvas(settings = this.controls.getSettings()) {
+    // Synchronize the source with the current editor before saving. A cached
+    // UV canvas or the shared home/gallery preview can still hold an older dye.
+    this.renderer.reveal.clear();
+    this.renderer.invalidate();
+    this.refreshBase(settings);
+    const current = this.canvasManager.getUmbrellaTextureCanvas();
+    // Freeze the base now: the shared renderer and mutable editor canvas must
+    // not select the background color of the saved work.
+    const source = document.createElement("canvas");
+    source.width = current.width;
+    source.height = current.height;
+    source.getContext("2d").drawImage(current, 0, 0);
+    if (this.threePreview?.inkFluid) {
+      try {
+        const composed = this.threePreview.captureStudioArtworkTexture(source);
+        if (composed) return composed;
+      } catch (error) { console.warn("三维伞面纹理合成失败，使用备用快照", error); }
+    }
+    const texture = document.createElement("canvas");
+    texture.width = source.width;
+    texture.height = source.height;
+    const context = texture.getContext("2d");
+    context.drawImage(source, 0, 0);
+    if (this.canvasManager.fluidSnapshotCanvas) {
+      context.globalAlpha = .78;
+      context.drawImage(this.canvasManager.fluidSnapshotCanvas, 0, 0, texture.width, texture.height);
+    }
     return texture;
   }
 
-  async presentShowcase(host, artworkCanvas, revision = `showcase-${Date.now()}`, galleryPose = null) {
+  async presentShowcase(host, artworkCanvas, revision = `showcase-${Date.now()}`, galleryPose = null, fabricMaterial = null) {
     if (!host?.isConnected) throw new Error("赏伞展示区域不存在，请关闭后重新打开。");
     if (!(artworkCanvas instanceof HTMLCanvasElement) || !artworkCanvas.width || !artworkCanvas.height) {
       throw new Error("伞面纹理未能生成，请重新保存或选择这把伞。");
@@ -365,6 +471,8 @@ export class App {
       };
     }
     const isHomeShowcase = host?.id === "homeUmbrellaHost";
+    const isGalleryFocusShowcase = host?.id === "galleryFocusHost";
+    preview.setFabricMaterial(fabricMaterial || this.controls.getSettings().fabricMaterial);
     preview.setPresentation("3d", host);
     await new Promise((resolve) => requestAnimationFrame(resolve));
     if (requestToken !== this.showcaseRequestToken) return null;
@@ -372,34 +480,53 @@ export class App {
     // Gallery thumbnails use Euler (roll, yaw, 0). Match those axes in the
     // focused model so the first 3D frame has the same pattern orientation.
     preview.modelRoot?.rotation.set(
-      isHomeShowcase ? 0 : galleryPose?.roll || 0,
-      isHomeShowcase ? 0 : galleryPose?.yaw || 0,
+      isHomeShowcase || isGalleryFocusShowcase ? 0 : galleryPose?.roll || 0,
+      isHomeShowcase || isGalleryFocusShowcase ? 0 : galleryPose?.yaw || 0,
       isHomeShowcase ? -0.54 : 0
     );
     if (preview.modelRoot && preview.baseModelScale) {
-      // Match the gallery capture's normalized model scale exactly. The focus
-      // host is square too, so the thumbnail and first 3D frame share one
-      // projection and the silk artwork cannot appear to shift on entry.
-      preview.modelRoot.scale.copy(preview.baseModelScale).multiplyScalar(isHomeShowcase ? 1.52 : 1);
+      // Home stays composed in its hero layout; the full-screen gallery uses
+      // the same model scale and silk-facing pose as the studio 3D view.
+      preview.modelRoot.scale.copy(preview.baseModelScale).multiplyScalar(isHomeShowcase ? .64 : 1);
     }
     preview.modelRoot?.updateMatrixWorld(true);
-    preview.camera.fov = isHomeShowcase ? 30 : host?.id === "galleryFocusHost" ? 28 : 34;
+    preview.camera.fov = isHomeShowcase ? 30 : 34;
     preview.camera.up.set(0, 1, 0);
-    preview.camera.position.set(...(isHomeShowcase ? [0.12, 3.4, 4.3] : host?.id === "galleryFocusHost" ? [0.15, 3.15, 4.8] : [0.15, 4.8, 4.4]));
-    preview.camera.updateProjectionMatrix();
-    if (host?.id === "galleryFocusHost" && preview.modelRoot) {
+    preview.setFoldProgress(0);
+    preview.camera.position.set(...(isHomeShowcase ? [0.12, 3.4, 4.3] : [0.15, 4.8, 4.4]));
+    if ((isHomeShowcase || host?.id === "galleryFocusHost") && preview.modelRoot) {
       // The 2D capture targets the posed model bounds. A fixed Y target shifted
       // the canopy in the focus viewer and made its UV artwork look mismatched.
-      preview.controls.target.copy(new THREE.Box3().setFromObject(preview.modelRoot).getCenter(new THREE.Vector3()));
+      preview.controls.target.copy(new THREE.Box3().setFromObject(preview.modelRoot, true).getCenter(new THREE.Vector3()));
+      if (isHomeShowcase) preview.camera.position.add(preview.controls.target);
+      else {
+        const bounds = new THREE.Box3().setFromObject(preview.canopyMesh || preview.modelRoot, true);
+        const center = bounds.getCenter(new THREE.Vector3());
+        const size = bounds.getSize(new THREE.Vector3());
+        const diameter = Math.max(size.x, size.z, .1);
+        const distance = diameter / (2 * Math.tan(THREE.MathUtils.degToRad(preview.camera.fov * .5))) * 1.12;
+        const elevation = THREE.MathUtils.degToRad(39);
+        const azimuth = THREE.MathUtils.degToRad(14);
+        preview.controls.target.copy(center);
+        preview.camera.position.set(
+          center.x + distance * Math.cos(elevation) * Math.sin(azimuth),
+          center.y + distance * Math.sin(elevation),
+          center.z + distance * Math.cos(elevation) * Math.cos(azimuth)
+        );
+        // Leave more room below the canopy for the gallery's bottom rail.
+        const framingOffset = diameter * .16;
+        preview.camera.position.y -= framingOffset;
+        preview.controls.target.y -= framingOffset;
+      }
     } else {
-      preview.controls.target.set(0, isHomeShowcase ? 0 : 0.03, 0);
+      preview.controls.target.set(0, 0.03, 0);
     }
+    preview.camera.updateProjectionMatrix();
     preview.controls.update();
-    preview.setFoldProgress(0);
     preview.setArtworkCanvas(artworkCanvas, revision);
     if (preview.controls) {
       this.studioAutoRotateSpeed ??= preview.controls.autoRotateSpeed;
-      preview.controls.autoRotateSpeed = isHomeShowcase ? 0.34 : 2;
+      preview.controls.autoRotateSpeed = isHomeShowcase ? 0.44 : 2;
       // Preserve the preview-matched entry angle; the user can rotate directly.
       preview.controls.autoRotate = isHomeShowcase;
     }
@@ -422,6 +549,7 @@ export class App {
       this.threePreview.modelRoot.rotation.set(0, 0, 0);
       if (this.threePreview.baseModelScale) this.threePreview.modelRoot.scale.copy(this.threePreview.baseModelScale);
     }
+    this.threePreview.setFabricMaterial(this.controls.getSettings().fabricMaterial);
     const host = this.viewMode === "3d" ? document.getElementById("threeHost") : document.getElementById("fluidHost");
     this.threePreview.setPresentation(this.viewMode === "3d" ? "3d" : "fluid", host);
     if (this.studioCameraSnapshot) {
@@ -457,6 +585,7 @@ export class App {
           preview.fitStudioInitialView();
           this.studioInitial3dViewApplied = true;
         }
+        preview.setStudioPanelCollapsed(document.getElementById("studioPage").classList.contains("is-panel-collapsed"));
         this.updateFoldControls(preview.foldProgress || 0);
       } catch (loadError) {
         const reason = loadError?.message || "Three.js 模块无法加载";
@@ -465,6 +594,11 @@ export class App {
         this.showMessage(`3D 预览暂不可用：${reason}`);
         return false;
       }
+      // Finish any in-progress placement/repetition reveal before composing the
+      // UV map, so a quick switch cannot capture an empty intermediate frame.
+      this.renderer.reveal.clear();
+      this.renderer.dirty.patterns = true;
+      this.renderer.render();
       this.refreshThreeTexture(true);
       this.threePreview.setActive(true);
       if (entering3d) this.threePreview.playViewTransition();
@@ -481,6 +615,7 @@ export class App {
       document.getElementById("saveBtn").textContent = "存入画廊";
     }
     this.viewMode = viewMode;
+    document.getElementById("audioReactiveBtn").hidden = viewMode !== "3d";
     document.getElementById("viewerFoldControl").setAttribute("aria-hidden", String(viewMode !== "3d"));
     this.inkWashBackground?.setSceneMode("studio");
     document.querySelectorAll("[data-view-mode]").forEach((button) => {
@@ -525,10 +660,15 @@ export class App {
   onPointerDown(event) {
     if (event.target.closest("#patternStory")) return;
     if (this.viewMode !== "2d" || !this.isReady || event.target.closest("button, input, select, textarea, [contenteditable='true']") || (event.pointerType === "mouse" && event.button !== 0)) return;
+    cancelAnimationFrame(this.viewFitFrame);
     const point = this.canvasManager.getPoint(event);
     const insideCanopy = this.canvasManager.containsPoint(point);
     const canPlacePattern = this.mode === "pattern" && this.canvasManager.containsWorkspacePoint(point);
-    if (!insideCanopy && !canPlacePattern) {
+    const activeObject = this.mode === "pattern" ? this.renderer.getSelected() : null;
+    const activeControl = this.renderer.hitSelectionControl(point, activeObject);
+    const hitsSelectedPattern = Boolean(activeObject && this.renderer.getInstances(activeObject)
+      .some((instance) => this.renderer.hitInstance(point, activeObject, instance)));
+    if (!insideCanopy && !canPlacePattern && !activeControl && !hitsSelectedPattern) {
       event.preventDefault();
       this.canvasContainer.setPointerCapture(event.pointerId);
       this.canvasContainer.classList.add("is-view-rotating");
@@ -550,6 +690,57 @@ export class App {
       return;
     }
     if (this.mode !== "pattern") return;
+    if (activeControl) {
+      event.preventDefault();
+      if (activeControl === "delete") {
+        this.renderer.deleteSelected();
+        this.updateSelectionControls();
+        this.showMessage("纹样已删除");
+        return;
+      }
+      if (activeControl === "repeat-plus" || activeControl === "repeat-minus") {
+        const current = activeObject.repeatMode === "radial" ? activeObject.repeatCount : 1;
+        if (activeObject.repeatMode !== "radial" && activeControl === "repeat-minus") {
+          this.showMessage("当前为单枚纹样");
+          return;
+        }
+        const next = Math.max(1, Math.min(16, current + (activeControl === "repeat-plus" ? 1 : -1)));
+        if (activeControl === "repeat-plus" && activeObject.repeatMode !== "radial") {
+          this.renderer.setRepeat(2);
+        } else if (activeObject.repeatMode === "radial") {
+          this.renderer.setRepeat(next);
+        }
+        this.updateSelectionControls();
+        this.showMessage(next === 1 ? "已恢复单枚纹样" : `环形重复 ${next} 次`);
+        return;
+      }
+      const instance = this.renderer.getSelectedInstance(activeObject);
+      if (!instance) return;
+      this.renderer.document.commit();
+      const pointerAngle = Math.atan2(point.y - instance.y, point.x - instance.x);
+      const pointerDistance = Math.max(1, Math.hypot(point.x - instance.x, point.y - instance.y));
+      if (activeControl === "rotate") {
+        this.gesture = {
+          type: "rotate-pattern",
+          pointerId: event.pointerId,
+          startAngle: pointerAngle,
+          startRotation: activeObject.rotation
+        };
+        this.canvasContainer.setPointerCapture(event.pointerId);
+        this.canvasContainer.classList.add("is-pattern-rotating");
+      } else {
+        this.gesture = {
+          type: "resize-pattern",
+          pointerId: event.pointerId,
+          startDistance: pointerDistance,
+          startScale: activeObject.scale
+        };
+        this.canvasContainer.setPointerCapture(event.pointerId);
+        this.canvasContainer.classList.add("is-pattern-resizing");
+      }
+      this.updateSelectionControls();
+      return;
+    }
     const selected = this.renderer.selectAt(point);
     if (selected) {
       this.renderer.document.commit();
@@ -565,7 +756,21 @@ export class App {
   onPointerMove(event) {
     if (this.viewMode !== "2d") return;
     const point = this.canvasManager.getPoint(event);
-    if (!this.gesture) return;
+    if (!this.gesture) {
+      if (this.mode !== "pattern") return;
+      const selected = this.renderer.getSelected();
+      const control = this.renderer.hitSelectionControl(point, selected);
+      const instance = this.renderer.getSelectedInstance(selected);
+      let cursor = "";
+      if (control?.startsWith("resize-nw") || control?.startsWith("resize-se")) cursor = "nwse-resize";
+      else if (control?.startsWith("resize")) cursor = "nesw-resize";
+      else if (control === "rotate") cursor = "grab";
+      else if (control === "delete") cursor = "pointer";
+      else if (control?.startsWith("repeat")) cursor = "pointer";
+      else if (selected && instance && this.renderer.hitInstance(point, selected, instance)) cursor = "move";
+      this.canvasManager.canvas.style.cursor = cursor;
+      return;
+    }
     if (event.pointerId !== this.gesture.pointerId) return;
     event.preventDefault();
     if (this.gesture.type === "rotate-view") {
@@ -575,6 +780,25 @@ export class App {
       else if (delta < -Math.PI) delta += Math.PI * 2;
       this.canvasManager.setViewTransform(this.canvasManager.viewZoom, this.canvasManager.viewRotation + delta);
       this.gesture.lastAngle = angle;
+      return;
+    }
+    if (this.gesture.type === "resize-pattern") {
+      const selected = this.renderer.getSelected();
+      const instance = this.renderer.getSelectedInstance(selected);
+      if (!selected || !instance) return;
+      const distance = Math.max(1, Math.hypot(point.x - instance.x, point.y - instance.y));
+      this.renderer.setSelectedProperty("scale", this.gesture.startScale * distance / this.gesture.startDistance, false);
+      return;
+    }
+    if (this.gesture.type === "rotate-pattern") {
+      const selected = this.renderer.getSelected();
+      const instance = this.renderer.getSelectedInstance(selected);
+      if (!selected || !instance) return;
+      const angle = Math.atan2(point.y - instance.y, point.x - instance.x);
+      let delta = angle - this.gesture.startAngle;
+      if (delta > Math.PI) delta -= Math.PI * 2;
+      if (delta < -Math.PI) delta += Math.PI * 2;
+      this.renderer.setSelectedProperty("rotation", (this.gesture.startRotation + delta) * 180 / Math.PI, false);
       return;
     }
     if (this.gesture.type === "brush") {
@@ -617,9 +841,29 @@ export class App {
     }
     if (this.gesture.type === "rotate-view") this.canvasContainer.classList.remove("is-view-rotating");
     if (this.gesture.type === "move") this.canvasContainer.classList.remove("is-pattern-moving");
+    if (this.gesture.type === "resize-pattern") this.canvasContainer.classList.remove("is-pattern-resizing");
+    if (this.gesture.type === "rotate-pattern") this.canvasContainer.classList.remove("is-pattern-rotating");
     this.gesture = null;
     this.lastFluidPoint = null;
+    this.canvasManager.canvas.style.cursor = "";
     this.updateSelectionControls();
+  }
+
+  animateCanvasView(zoom, panX, panY) {
+    cancelAnimationFrame(this.viewFitFrame);
+    const manager = this.canvasManager;
+    const start = { zoom: manager.viewZoom, x: manager.viewPanX, y: manager.viewPanY };
+    const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 360;
+    const started = performance.now();
+    const frame = (now) => {
+      const t = duration ? Math.min(1, (now - started) / duration) : 1;
+      const ease = 1 - Math.pow(1 - t, 3);
+      manager.setViewTransform(start.zoom + (zoom - start.zoom) * ease, manager.viewRotation,
+        start.x + (panX - start.x) * ease, start.y + (panY - start.y) * ease);
+      if (t < 1) this.viewFitFrame = requestAnimationFrame(frame);
+      else this.viewFitFrame = 0;
+    };
+    this.viewFitFrame = requestAnimationFrame(frame);
   }
 
   injectFluidSegment(from, to, settings) {
@@ -648,7 +892,7 @@ export class App {
       speed: Math.max(0, Math.min(1, rawSpeed / 2.2)),
       pressure: Math.max(0, Math.min(1, settings.pointerPressure ?? 0.5)),
       color: settings.color || "#537c7e",
-      radius: Math.max(soft ? 0.0009 : 0.006, Math.min(0.09, (settings.brushSize || 8) * (soft ? 1 : settings.pressureFactor || 1) * preset.size / diameter * 1.45)),
+      radius: Math.max(soft ? 0.0009 : 0.006, Math.min(0.18, (settings.brushSize || 8) * (soft ? 1 : settings.pressureFactor || 1) * preset.size / diameter * 1.45)),
       opacity: Math.max(0, Math.min(0.92, (settings.opacity ?? 0.45) * preset.opacity)),
       water: settings.brushStyle === "texture" || settings.brushStyle === "clean" ? 0 : preset.water,
       grain: preset.grain,
@@ -827,37 +1071,10 @@ export class App {
     return result;
   }
 
-  updateSelectedFromControl(id, live) {
-    if (!this.renderer.getSelected()) return;
-    if (live && !this.controlEdits.has(id)) {
-      this.renderer.document.commit();
-      this.controlEdits.add(id);
-    }
-    if (id === "repeatCount") this.renderer.setRepeat(Number(this.controls.elements[id].value), null, { commit: false, animate: false });
-    else {
-      const map = { patternScale: "scale", patternRotation: "rotation" };
-      this.renderer.setSelectedProperty(map[id], Number(this.controls.elements[id].value), false);
-    }
+  updateSelectionControls({ render = true } = {}) {
     const selected = this.renderer.getSelected();
-    this.controls.elements.patternScale.max = String(this.renderer.getMaxScale(selected));
-    this.controls.elements.patternScale.value = String(selected.scale);
-    this.controls.updatePatternValues();
-  }
-
-  updateSelectionControls() {
-    const selected = this.renderer.getSelected(), panel = this.controls.elements.patternTools;
-    panel.hidden = !selected || this.mode !== "pattern";
-    if (!selected) return;
-    const controls = this.controls.elements;
-    const orbitZoneName = selected.repeatMode === "radial" ? selected.zone : (selected.zone === "伞心" ? "中部" : selected.zone);
-    controls.repeatCount.max = ["外圈", "伞缘"].includes(orbitZoneName) ? "16" : "12";
-    const selectedAsset = this.patternDrawer.getAsset(selected.patternId);
-    const defaultRepeatCount = selectedAsset?.defaultRepeatCount || 8;
-    controls.repeatCount.value = String(Math.min(Number(controls.repeatCount.max), selected.repeatMode === "radial" ? selected.repeatCount : defaultRepeatCount));
-    controls.patternScale.max = String(this.renderer.getMaxScale(selected));
-    controls.patternScale.value = String(selected.scale);
-    controls.patternRotation.value = String(Math.round(selected.rotation * 180 / Math.PI));
-    this.controls.updatePatternValues();
+    this.canvasContainer.classList.toggle("has-pattern-selection", Boolean(selected && this.mode === "pattern"));
+    if (render) this.renderer.render();
   }
 
   onControlChange(id, commit = false) {
@@ -867,7 +1084,12 @@ export class App {
 
   undo() { if (this.renderer.undo()) { this.rebuildFluidArtwork(); this.updateSelectionControls(); this.showMessage("已撤销"); } }
   redo() { if (this.renderer.redo()) { this.rebuildFluidArtwork(); this.updateSelectionControls(); this.showMessage("已重做"); } }
-  refreshBase() { this.canvasManager.renderBase(this.controls.getSettings()); this.renderer.render(); }
+  refreshBase(settings = this.controls.getSettings()) {
+    this.canvasManager.renderBase(settings, { deferRender: true });
+    this.renderer.render({ markTexture: false });
+    // Upload only after both the new cloth and motifs are ready.
+    this.canvasManager.markTextureDirty();
+  }
   updateReadouts() {
     this.controls.updateValueDisplays(); this.controls.updatePatternReadout();
     const segmentReadout = document.getElementById("segmentReadout");

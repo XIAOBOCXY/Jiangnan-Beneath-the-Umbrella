@@ -17,17 +17,20 @@ OUT_DIR = os.path.join(ROOT, "assets", "models")
 BLEND_PATH = os.path.join(OUT_DIR, "west-lake-umbrella.blend")
 GLB_PATH = os.path.join(OUT_DIR, "west-lake-umbrella.glb")
 RADIUS = 1.76
-APEX = 0.4
+APEX = 0.22
+APEX_OPEN = APEX
+RUNNER_OPEN = -0.17
+RUNNER_CLOSED = -1.74
 RIB_COUNT = 36
 CANOPY_RADIAL_STEPS = 88
 # The cloth and every long split-bamboo rib share one folded target path.
-FOLD_ANGLE = 1.21
 FOLDED_BUNDLE_RADIUS = 0.075
 # Let each pale bamboo rib pass just beyond the silk hem, as on the physical
 # umbrella; the same rib still gathers into the shared closed bamboo bundle.
 RIB_TIP_RADIUS = 1.025
 FRAME_OPEN = 1
 FRAME_CLOSED = 37
+FOLD_POSE_COUNT = 8
 
 
 def clean_scene():
@@ -93,7 +96,11 @@ def folded_point(radius, angle):
 
 def folded_height(radius):
     """Shared longitudinal profile for the folded cloth and bamboo structure."""
-    return APEX - radius * RADIUS * math.sin(FOLD_ANGLE) - radius * radius * APEX * math.cos(FOLD_ANGLE)
+    # The closed split-bamboo tips converge into the runner instead of passing
+    # below it. A slightly curved profile keeps the bundle organic while its
+    # final point remains physically attached to the small sliding cylinder.
+    normalized = min(1.0, radius / RIB_TIP_RADIUS)
+    return APEX_OPEN + (RUNNER_CLOSED - APEX_OPEN) * normalized
 
 
 def bundle_point(radius, angle):
@@ -107,6 +114,56 @@ def bundle_profile(radius):
     start = smoothstep(0.0, 0.09, radius)
     end = 1.0 - smoothstep(0.91, 1.0, radius)
     return 0.46 + 0.54 * min(start, end)
+
+
+def articulated_curve(radii, angle, progress, height_offset=0.0):
+    """Fold a painted radial line using constant-length bamboo segments."""
+    radial = Vector((math.cos(angle), math.sin(angle), 0))
+    original_r = 0.0
+    original_z = APEX
+    closed_r = 0.0
+    result_r = 0.0
+    result_z = APEX
+    result = []
+    for radius in radii:
+        if radius <= 0:
+            result.append(Vector((0, 0, APEX)))
+            continue
+        original = canopy_point(radius, angle) + Vector((0, 0, height_offset))
+        next_r = original.dot(radial)
+        dx, dz = next_r - original_r, original.z - original_z
+        length = math.hypot(dx, dz)
+        target_r = FOLDED_BUNDLE_RADIUS * bundle_profile(radius) * smoothstep(0, 0.07, radius)
+        target_dx = max(-length * .999, min(length * .999, target_r - closed_r))
+        open_angle = math.atan2(dz, dx)
+        closed_angle = -math.acos(target_dx / max(length, 1e-9))
+        segment_angle = open_angle + (closed_angle - open_angle) * progress
+        result_r += math.cos(segment_angle) * length
+        result_z += math.sin(segment_angle) * length
+        result.append(Vector((result_r * radial.x, result_r * radial.y, result_z)))
+        original_r, original_z, closed_r = next_r, original.z, target_r
+    return result
+
+
+def add_fold_poses(obj, pose_coordinates, suffix):
+    """Interpolate neighbouring poses; the short steps keep ribs near rigid."""
+    obj.shape_key_add(name="Basis", from_mix=False)
+    shape_keys = obj.data.shape_keys
+    for index, coordinates in enumerate(pose_coordinates, start=1):
+        key = obj.shape_key_add(name=f"Fold {index:02d}", from_mix=False)
+        for vertex, coordinate in zip(key.data, coordinates):
+            vertex.co = coordinate
+        for pose in range(FOLD_POSE_COUNT + 1):
+            key.value = 1.0 if pose == index else 0.0
+            frame = FRAME_OPEN + (FRAME_CLOSED - FRAME_OPEN) * pose / FOLD_POSE_COUNT
+            key.keyframe_insert(data_path="value", frame=frame, group="Umbrella Fold")
+        key.value = 0.0
+    action = shape_keys.animation_data.action
+    action.name = "Umbrella Fold" + suffix
+    for curve in action.fcurves:
+        for point in curve.keyframe_points:
+            point.interpolation = "LINEAR"
+    push_into_shared_nla(shape_keys, action)
 
 
 def linear_to_srgb(value):
@@ -284,16 +341,37 @@ def animate_rib_slats_closed(mesh_obj, sample_radii, rib_index, width, thickness
     # a mid-fold overshoot, so bamboo tips appeared longer than the canopy.
     closed_inverse = base_matrix.to_quaternion().inverted()
     corners = ((-1, -1), (1, -1), (1, 1), (-1, 1))
-    apex = Vector((0, 0, APEX))
+    base_positions = [Vector(tuple(mesh_obj.data.vertices[index * 4 + corner].co)) for index in range(len(sample_radii)) for corner in range(4)]
+    centers = []
+    for ring in range(len(sample_radii)):
+        corners_local = base_positions[ring * 4:(ring + 1) * 4]
+        centers.append(sum(corners_local, Vector()) / 4.0)
+    segment_lengths = [(centers[index + 1] - centers[index]).length for index in range(len(centers) - 1)]
+    hinge_length = centers[0].length
+    target_heights = []
+    target_radii = []
+    previous_z = 0.0
+    previous_radius = 0.0
     for ring, panel_radius in enumerate(sample_radii):
-        # Place each closed bamboo point on the same folded canopy sample.
-        # This keeps the rib tips from projecting past the silk while the
-        # umbrella closes, instead of deriving a separate, longer path length.
-        section = bundle_profile(panel_radius)
-        center = folded_point(panel_radius, radial_angle) - radial_axis * 0.003
+        target_radius = FOLDED_BUNDLE_RADIUS * bundle_profile(panel_radius)
+        if ring == 0:
+            target_z = -math.sqrt(max(hinge_length * hinge_length - target_radius * target_radius, 0.0))
+        else:
+            horizontal = target_radius - previous_radius
+            target_z = previous_z - math.sqrt(max(segment_lengths[ring - 1] ** 2 - horizontal ** 2, 0.0))
+        target_heights.append(target_z)
+        target_radii.append(target_radius)
+        previous_z = target_z
+        previous_radius = target_radius
+    for ring, panel_radius in enumerate(sample_radii):
         for corner, (width_sign, normal_sign) in enumerate(corners):
-            world_offset = (width_axis * (width_sign * width * 0.5) + radial_axis * (normal_sign * thickness * 0.5)) * section
-            folded.data[ring * 4 + corner].co = closed_inverse @ (center + world_offset - apex)
+            # Rotate each slat into a vertical bundle while preserving every
+            # centreline segment length. The final tip reaches the runner.
+            folded.data[ring * 4 + corner].co = Vector((
+                target_radii[ring] + normal_sign * thickness * 0.5,
+                width_sign * width * 0.5,
+                target_heights[ring]
+            ))
     shape_keys = mesh_obj.data.shape_keys
     action = set_fold_action(shape_keys, f" Rib {rib_index + 1:02d}")
     folded.value = 0.0
@@ -325,13 +403,36 @@ def animate_rib_seam_closed(mesh_obj, sample_radii, rib_index, tube_radius, side
     # The seam follows the same folded cloth samples; a separate pivot rotation
     # would make it drift off the fabric between the open and closed poses.
     closed_inverse = base_matrix.to_quaternion().inverted()
-    apex = Vector((0, 0, APEX))
+    base_positions = [Vector(tuple(mesh_obj.data.vertices[index * sides + side].co)) for index in range(len(sample_radii)) for side in range(sides)]
+    centers = []
+    for ring in range(len(sample_radii)):
+        corners_local = base_positions[ring * sides:(ring + 1) * sides]
+        centers.append(sum(corners_local, Vector()) / sides)
+    segment_lengths = [(centers[index + 1] - centers[index]).length for index in range(len(centers) - 1)]
+    hinge_length = centers[0].length
+    target_heights = []
+    target_radii = []
+    previous_z = 0.0
+    previous_radius = 0.0
     for ring, panel_radius in enumerate(sample_radii):
-        center = folded_point(panel_radius, radial_angle)
+        target_radius = FOLDED_BUNDLE_RADIUS * bundle_profile(panel_radius)
+        if ring == 0:
+            target_z = -math.sqrt(max(hinge_length * hinge_length - target_radius * target_radius, 0.0))
+        else:
+            horizontal = target_radius - previous_radius
+            target_z = previous_z - math.sqrt(max(segment_lengths[ring - 1] ** 2 - horizontal ** 2, 0.0))
+        target_heights.append(target_z)
+        target_radii.append(target_radius)
+        previous_z = target_z
+        previous_radius = target_radius
+    for ring, panel_radius in enumerate(sample_radii):
         for side in range(sides):
             side_angle = side / sides * math.tau
-            offset = width_axis * (math.cos(side_angle) * tube_radius) + radial_axis * (math.sin(side_angle) * tube_radius)
-            folded.data[ring * sides + side].co = closed_inverse @ (center + offset - apex)
+            folded.data[ring * sides + side].co = Vector((
+                target_radii[ring] + math.sin(side_angle) * tube_radius,
+                math.cos(side_angle) * tube_radius,
+                target_heights[ring]
+            ))
     shape_keys = mesh_obj.data.shape_keys
     action = set_fold_action(shape_keys, f" Seam {rib_index + 1:02d}")
     folded.value = 0.0
@@ -387,11 +488,13 @@ def add_cylinder(name, radius_top, radius_bottom, depth, location, material, ver
     return obj
 
 
-def make_handle_and_hardware(root, bamboo, bamboo_light, silk):
+def make_handle_and_hardware(root, bamboo, bamboo_light, silk, runner_positions):
     # The shaft is one continuous bamboo core.  It overlaps the hub, gathered
     # rib bundle and grip so no thin exposed rod or floating connector appears
     # at either end of the closed umbrella.
-    shaft = add_cylinder("bamboo-shaft", 0.026, 0.022, 2.52, (0, 0, -0.64), bamboo, 16)
+    # The shaft stops at the canopy apex. Its previous top cap protruded above
+    # the hub and read as a long spike in top-down views.
+    shaft = add_cylinder("bamboo-shaft", 0.026, 0.022, 2.16, (0, 0, -0.86), bamboo, 16)
     shaft.parent = root
     grip = add_cylinder("straight-bamboo-grip", 0.034, 0.029, 0.74, (0, 0, -1.63), bamboo, 16)
     grip.parent = root
@@ -402,25 +505,32 @@ def make_handle_and_hardware(root, bamboo, bamboo_light, silk):
         ring.data.materials.append(bamboo_light)
         ring.parent = root
 
-    runner = add_cylinder("umbrella-runner", 0.069, 0.069, 0.054, (0, 0, -0.17), bamboo_light, 24)
+    runner = add_cylinder("umbrella-runner", 0.069, 0.069, 0.054, (0, 0, RUNNER_OPEN), bamboo_light, 24)
     runner.parent = root
-    runner.keyframe_insert(data_path="location", frame=FRAME_OPEN, group="Umbrella Fold")
-    runner.location.z = -1.13
-    runner.keyframe_insert(data_path="location", frame=FRAME_CLOSED, group="Umbrella Fold")
+    for frame, height in runner_positions.items():
+        runner.location.z = height
+        runner.keyframe_insert(data_path="location", frame=frame, group="Umbrella Fold")
     runner_action = runner.animation_data.action
     for curve in runner_action.fcurves:
         for key in curve.keyframe_points:
-            key.interpolation = "BEZIER"
-            key.handle_left_type = "AUTO_CLAMPED"
-            key.handle_right_type = "AUTO_CLAMPED"
+            key.interpolation = "LINEAR"
     push_into_shared_nla(runner, runner_action)
 
-    hub = add_cylinder("umbrella-hub", 0.052, 0.07, 0.105, (0, 0, APEX + 0.025), bamboo, 24)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=0.132, depth=0.018, location=(0, 0, APEX + 0.009))
+    rosette = bpy.context.object
+    rosette.name = "silk-canopy-rosette"
+    rosette.data.materials.append(silk)
+    rosette.parent = root
+
+    hub = add_cylinder("umbrella-hub", 0.088, 0.108, 0.04, (0, 0, APEX + 0.035), bamboo_light, 32)
     hub.parent = root
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=12, radius=0.045, location=(0, 0, APEX + 0.092))
+    add_cylinder("umbrella-finial-stem", 0.012, 0.015, 0.055, (0, 0, APEX + 0.082), bamboo, 16).parent = root
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=14, radius=0.057, location=(0, 0, APEX + 0.118))
     finial = bpy.context.object
     finial.name = "umbrella-finial"
-    finial.data.materials.append(bamboo_light)
+    finial.scale.z = 0.78
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    finial.data.materials.append(bamboo)
     finial.parent = root
 
 
@@ -441,26 +551,24 @@ def build_model():
 
     canopy = radial_mesh("silk-canopy", CANOPY_RADIAL_STEPS, 288, canopy_point, silk)
     canopy.parent = root
-    basis = canopy.shape_key_add(name="Basis", from_mix=False)
-    folded = canopy.shape_key_add(name="Folded", from_mix=False)
-    for ri in range(89):
-        radius = ri / 88
+    radii = [ri / CANOPY_RADIAL_STEPS for ri in range(CANOPY_RADIAL_STEPS + 1)]
+    canopy_poses = []
+    for pose in range(1, FOLD_POSE_COUNT + 1):
+        progress = pose / FOLD_POSE_COUNT
+        coordinates = [None] * ((CANOPY_RADIAL_STEPS + 1) * 289)
         for ai in range(289):
-            index = ri * 289 + ai
             angle = ai / 288 * math.tau
-            folded.data[index].co = folded_point(radius, angle)
-    folded.value = 0.0
-    shape_keys = canopy.data.shape_keys
-    shape_action = set_fold_action(shape_keys, " Cloth")
-    folded.keyframe_insert(data_path="value", frame=FRAME_OPEN, group="Umbrella Fold")
-    folded.value = 1.0
-    folded.keyframe_insert(data_path="value", frame=FRAME_CLOSED, group="Umbrella Fold")
-    for curve in shape_action.fcurves:
-        for key in curve.keyframe_points:
-            key.interpolation = "BEZIER"
-            key.handle_left_type = "AUTO_CLAMPED"
-            key.handle_right_type = "AUTO_CLAMPED"
-    push_into_shared_nla(shape_keys, shape_action)
+            spoke_step = math.tau / RIB_COUNT
+            spoke = round(angle / spoke_step) * spoke_step
+            delta = (angle - spoke + math.pi) % math.tau - math.pi
+            folded_angle = spoke + delta * (0.024 / (spoke_step * .5))
+            current_angle = angle + (folded_angle - angle) * progress
+            curve = articulated_curve(radii, angle, progress)
+            for ri, point in enumerate(curve):
+                radius = math.hypot(point.x, point.y)
+                coordinates[ri * 289 + ai] = Vector((radius * math.cos(current_angle), radius * math.sin(current_angle), point.z))
+        canopy_poses.append(coordinates)
+    add_fold_poses(canopy, canopy_poses, " Cloth")
 
     # Keep the binding centered on the cloth edge, but make it read as fine
     # silk stitching instead of a separate golden wire ring.
@@ -469,34 +577,22 @@ def build_model():
     hem_points = [canopy_point(1.0, index / 288 * math.tau) for index in range(289)]
     hem = tube_mesh("stitched-canopy-hem", hem_points, 0.0032, edge_thread, sides=7)
     hem.parent = root
-    # The hem remains independent and gathers lengthwise with the silk.
-    hem_basis = hem.shape_key_add(name="Basis", from_mix=False)
-    hem_fold = hem.shape_key_add(name="Folded", from_mix=False)
     hem_sides = 7
-    for index in range(len(hem_fold.data)):
-        angle = (index // hem_sides) / 288 * math.tau
-        # Bind the closed hem to the exact folded edge target. The previous
-        # independent spiral made the binding float away from the gathered silk.
-        folded_center = folded_point(1.0, angle)
-        original_center = hem_points[index // hem_sides]
-        original_vertex = hem_basis.data[index].co.copy()
-        offset = original_vertex - original_center
-        hem_fold.data[index].co = folded_center + offset * 0.42
-    hem_shape = hem.data.shape_keys
-    hem_action = set_fold_action(hem_shape, " Hem")
-    hem_fold.keyframe_insert(data_path="value", frame=FRAME_OPEN, group="Umbrella Fold")
-    hem_fold.value = 1.0
-    hem_fold.keyframe_insert(data_path="value", frame=FRAME_CLOSED, group="Umbrella Fold")
-    for curve in hem_action.fcurves:
-        for key in curve.keyframe_points:
-            key.interpolation = "BEZIER"
-            key.handle_left_type = "AUTO_CLAMPED"
-            key.handle_right_type = "AUTO_CLAMPED"
-    push_into_shared_nla(hem_shape, hem_action)
+    hem_poses = []
+    for pose, canopy_coordinates in enumerate(canopy_poses, start=1):
+        offsets = 1.0 - .58 * pose / FOLD_POSE_COUNT
+        coordinates = []
+        for index, vertex in enumerate(hem.data.vertices):
+            ai = index // hem_sides
+            center = canopy_coordinates[CANOPY_RADIAL_STEPS * 289 + ai]
+            coordinates.append(center + (vertex.co - hem_points[ai]) * offsets)
+        hem_poses.append(coordinates)
+    add_fold_poses(hem, hem_poses, " Hem")
 
     # Each long bamboo rib morphs along the canopy fold; the support struts and
     # runner follow the same frame range.
     rib_pivots = []
+    rib_joints = []
     for rib in range(RIB_COUNT):
         angle = rib / RIB_COUNT * math.tau
         radial = Vector((math.cos(angle), math.sin(angle), 0))
@@ -534,81 +630,95 @@ def build_model():
         rib_thickness = 0.006
         main_rib = bamboo_slat_mesh(f"bamboo-main-rib-{rib + 1:02d}", line, rib_width, rib_thickness, bamboo)
         main_rib.parent = pivot
-        animate_rib_slats_closed(main_rib, rib_sample_radii, rib, rib_width, rib_thickness)
         seam = tube_mesh(f"silk-rib-seam-{rib + 1:02d}", seam_line, 0.0013, seam_material, 5)
         seam.parent = pivot
-        animate_rib_seam_closed(seam, seam_sample_radii, rib, 0.0013, 5)
+        slat_poses = []
+        seam_poses = []
+        joint_index = min(range(len(rib_sample_radii)), key=lambda index: abs(rib_sample_radii[index] * RADIUS - .48))
+        joints = [base_quat @ Vector(line[joint_index]) + Vector((0, 0, APEX))]
+        corners = ((-1, -1), (1, -1), (1, 1), (-1, 1))
+        for pose in range(1, FOLD_POSE_COUNT + 1):
+            progress = pose / FOLD_POSE_COUNT
+            curve = articulated_curve(rib_sample_radii, angle, progress, .012)
+            local_curve = [base_quat.inverted() @ (point - Vector((0, 0, APEX))) for point in curve]
+            coordinates = []
+            for index, point in enumerate(local_curve):
+                tangent = (local_curve[min(index + 1, len(local_curve) - 1)] - local_curve[max(index - 1, 0)]).normalized()
+                width_axis = Vector((0, 1, 0))
+                normal_axis = tangent.cross(width_axis).normalized()
+                coordinates.extend(point + width_axis * (ws * rib_width * .5) + normal_axis * (ns * rib_thickness * .5) for ws, ns in corners)
+            slat_poses.append(coordinates)
+            joints.append(curve[joint_index])
+            seam_curve = articulated_curve(seam_sample_radii, angle, progress, .018)
+            seam_local = [base_quat.inverted() @ (point - Vector((0, 0, APEX))) for point in seam_curve]
+            seam_coordinates = []
+            for index, point in enumerate(seam_local):
+                old_center = Vector(seam_line[index])
+                for side in range(5):
+                    offset = seam.data.vertices[index * 5 + side].co - old_center
+                    seam_coordinates.append(point + offset)
+            seam_poses.append(seam_coordinates)
+        add_fold_poses(main_rib, slat_poses, f" Rib {rib + 1:02d}")
+        add_fold_poses(seam, seam_poses, f" Seam {rib + 1:02d}")
+        rib_joints.append(joints)
 
         # The rib is already driven by a shape key whose target is sampled on
         # the folded canopy. Keep its parent frame fixed to avoid double motion.
         pivot.rotation_quaternion = base_quat
 
-    # Calculate brace endpoints at open and closed frames and key each physical
-    # link as a rod between the moving runner and its main-rib joint.
-    brace_radius = 0.48
-    runner_open = -0.17
-    runner_closed = -1.13
-    for rib, (pivot, base_quat, radial, tangent) in enumerate(rib_pivots):
-        axis_angle = rib / RIB_COUNT * math.tau
-        surface = canopy_point(brace_radius / RADIUS, axis_angle)
-        hinge_open = Vector((surface.x, surface.y, surface.z - 0.025))
-        start_open = Vector((0, 0, runner_open))
-        mid_open = (start_open + hinge_open) * 0.5
-        direction_open = hinge_open - start_open
-        brace_length = direction_open.length
+    def joint_at(joints, frame):
+        position = (frame - FRAME_OPEN) / (FRAME_CLOSED - FRAME_OPEN) * FOLD_POSE_COUNT
+        lower = min(FOLD_POSE_COUNT, int(position))
+        upper = min(FOLD_POSE_COUNT, lower + 1)
+        return joints[lower].lerp(joints[upper], position - lower)
 
-        bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.0068, depth=1.0, location=mid_open)
+    # Derive the slider path from a constant-length short rib attached to its
+    # long-rib joint. This avoids a detached or upward-jumping support fan.
+    anchor_radius = .05
+    first = rib_joints[0][0]
+    reference_length = math.hypot(math.hypot(first.x, first.y) - anchor_radius, first.z - RUNNER_OPEN)
+    runner_positions = {}
+    for frame in range(FRAME_OPEN, FRAME_CLOSED + 1):
+        joint = joint_at(rib_joints[0], frame)
+        horizontal = math.hypot(joint.x, joint.y) - anchor_radius
+        runner_positions[frame] = joint.z - math.sqrt(max(0.0, reference_length ** 2 - horizontal ** 2))
+
+    for rib, (pivot, base_quat, radial, tangent) in enumerate(rib_pivots):
+        hinge_open = rib_joints[rib][0]
+        start_open = radial * anchor_radius + Vector((0, 0, RUNNER_OPEN))
+        brace_length = (hinge_open - start_open).length
+        bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.0068, depth=1.0, location=(start_open + hinge_open) * .5)
         brace = bpy.context.object
         brace.name = f"bamboo-short-rib-{rib + 1:02d}"
+        brace.parent = root
         brace.data.materials.append(bamboo_light)
         brace.rotation_mode = "QUATERNION"
-        brace.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(direction_open.normalized())
-        brace.scale.z = direction_open.length
-        brace.keyframe_insert(data_path="location", frame=FRAME_OPEN, group="Umbrella Fold")
-        brace.keyframe_insert(data_path="rotation_quaternion", frame=FRAME_OPEN, group="Umbrella Fold")
-        brace.keyframe_insert(data_path="scale", frame=FRAME_OPEN, group="Umbrella Fold")
-        # In the closed pose, short ribs tuck between adjacent long ribs and
-        # share the same gathered profile instead of forming a separate sleeve.
-        bundle_angle = (rib + 0.5) / RIB_COUNT * math.tau
-        bundle_inner = bundle_point(0.04, bundle_angle)
-        bundle_outer = bundle_point(0.93, bundle_angle)
-        closed_axis = bundle_outer - bundle_inner
-        brace.location = (bundle_inner + bundle_outer) * 0.5
-        closed_rotation = Vector((0, 0, 1)).rotation_difference(closed_axis.normalized())
-        # Quaternions q and -q encode the same pose, but interpolating across
-        # opposite signs can make individual short ribs take the long route
-        # and visibly flip during closure. Keep every end pose in the same
-        # quaternion hemisphere as its open pose.
-        if brace.rotation_quaternion.dot(closed_rotation) < 0.0:
-            closed_rotation = Quaternion(tuple(-component for component in closed_rotation))
-        brace.rotation_quaternion = closed_rotation
-        brace.scale.z = closed_axis.length
-        # The short ribs otherwise swing through a wide arc while the long
-        # bones and canopy are already folding. Tuck this same support set
-        # temporarily inside the fabric, then let it settle between the long
-        # ribs near the closed pose; this prevents a second, reversed skeleton
-        # from appearing during the middle of the animation.
-        brace.scale = (0.001, 0.001, 0.001)
-        brace.keyframe_insert(data_path="scale", frame=17, group="Umbrella Fold")
-        brace.keyframe_insert(data_path="scale", frame=29, group="Umbrella Fold")
-        brace.scale = (1.0, 1.0, closed_axis.length)
-        brace.keyframe_insert(data_path="location", frame=FRAME_CLOSED, group="Umbrella Fold")
-        brace.keyframe_insert(data_path="rotation_quaternion", frame=FRAME_CLOSED, group="Umbrella Fold")
-        brace.keyframe_insert(data_path="scale", frame=FRAME_CLOSED, group="Umbrella Fold")
+        previous_rotation = None
+        for frame in range(FRAME_OPEN, FRAME_CLOSED + 1):
+            joint = joint_at(rib_joints[rib], frame)
+            height = runner_positions[frame]
+            vertical = joint.z - height
+            horizontal = math.sqrt(max(0.0, brace_length ** 2 - vertical ** 2))
+            anchor = max(-.065, min(.065, math.hypot(joint.x, joint.y) - horizontal))
+            start = radial * anchor + Vector((0, 0, height))
+            direction = joint - start
+            rotation = Vector((0, 0, 1)).rotation_difference(direction.normalized())
+            if previous_rotation is not None and previous_rotation.dot(rotation) < 0:
+                rotation = Quaternion(tuple(-component for component in rotation))
+            previous_rotation = rotation.copy()
+            brace.location = (start + joint) * .5
+            brace.rotation_quaternion = rotation
+            brace.scale = (1.0, 1.0, direction.length)
+            brace.keyframe_insert(data_path="location", frame=frame, group="Umbrella Fold")
+            brace.keyframe_insert(data_path="rotation_quaternion", frame=frame, group="Umbrella Fold")
+            brace.keyframe_insert(data_path="scale", frame=frame, group="Umbrella Fold")
         action = brace.animation_data.action
         for curve in action.fcurves:
             for key in curve.keyframe_points:
-                if curve.data_path == "rotation_quaternion":
-                    # glTF interpolates quaternion tracks with slerp; sampling
-                    # them linearly avoids Bézier component overshoot in Blender.
-                    key.interpolation = "LINEAR"
-                else:
-                    key.interpolation = "BEZIER"
-                    key.handle_left_type = "AUTO_CLAMPED"
-                    key.handle_right_type = "AUTO_CLAMPED"
+                key.interpolation = "LINEAR"
         push_into_shared_nla(brace, action)
 
-    make_handle_and_hardware(root, bamboo, bamboo_light, silk)
+    make_handle_and_hardware(root, bamboo, bamboo_light, silk, runner_positions)
 
     # Native source opens at the finished design pose and exposes the animation
     # as a single NLA track that GLB exports as a reversible clip.

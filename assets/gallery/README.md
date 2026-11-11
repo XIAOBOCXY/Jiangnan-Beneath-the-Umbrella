@@ -2,14 +2,20 @@
 
 ## 悬伞展廊
 
-- `hanging-gallery-bg-v3.png` 是当前使用的水彩质感江南廊景底图，随站点本地托管；画面不含预绘的伞、绳索或人物，保证上方悬挂的作品来自当前作品库且可交互。旧版 `hanging-gallery-bg.png` 继续保留作回退，不再作为默认底图。
-- `layers/walkers-sprite-v4.png` 是悬伞展廊当前使用的透明 4×2 淡彩人物序列（上排女性、下排男性，每排 4 帧）；帧格按 3:4 纵横比播放，服饰用青灰、暖白和黛绿与廊景统一。男性脚底在画布内约有 9.4% 透明留白，样式会补偿这段偏移；原 `walkers-sprite-v3.png` 保留作回退，`walkers-sprite-v2.png` 继续用于石桥画廊。
-- 悬伞展廊在整场合成后统一校色，让房间底图、动态人物、伞、雨雾和前景共享同一综合色温与纸纹；窗边暖光和漫反射雾层跨越前后景，降低素材各自独立的观感。人物脚点、柔和接触阴影和短淡湿地倒影共用同一地面锚点；人物运动层覆盖整个视口，行走基线按扩展后的场景高度换算，倒影不会被底部裁切。伞预览与人物采用匹配的低饱和暖色，伞缘使用随室内主光方向偏移的柔和投影。
-- 背景仍是原有廊景；角色和伞以不同景深呈现，但共享纸纹、综合色温和光照衰减，不使用厚重模糊遮罩掩盖边缘。
-- 新展廊由 `#hangingGallery` 独立承载，入口位于原石桥画廊导航；切换“原画廊”会还原原页面，不删除或替换原画廊。
-- 横绳是两端锚定的 SVG 贝塞尔绳，中央自然下垂并以小幅度缓慢改变弧度；每根挂绳根据自身横向位置落到弧线上。绳、挂绳和伞作为一个悬挂单元独立摆动，各自周期错开；鼠标风扰动单件悬挂单元，不旋转整组伞。伞图像使用 `ThreeUmbrellaPreview.captureGalleryParasolPreview()` 对当前作品生成的透明预览；点击悬伞使用同一作品 ID 打开已有 Three.js 3D 赏伞视图。
-- 底部横向滑轨展示作品库，箭头控制滚动；点选卡片可挂起或取下，初次进入时随机挂起最多四把。卡片的“×”会将系统预设作品从本次展陈移除；个人作品需确认后从本地作品库删除。此模式没有独立的右侧全部作品面板。
-- 新展廊使用文化页导航墨迹组件的同款交互样式；右上“原画廊”回到桥景模式。作品数据与预览仍由现有 `ArtworkGalleryStore` 和画廊准备流程提供，不在新模式中另存副本。
+悬伞展廊以 `assets/models/hanging-gallery-street.blend` 为可编辑源文件，导出的 `hanging-gallery-street.glb` 包含连续纵深店铺立面、起伏瓦顶、山墙、木格窗、浅层室内、伞架、制作台、灯笼和石路。两侧建筑覆盖镜头滚轮行进范围，并与道路使用同一收窄曲线，在远处共同汇向中线；立面、进退位置和窗格各不相同，房屋不带招牌文字。构建脚本为 `tools/create_hanging_gallery_world.py`；展开、半开、收拢三种静态展示伞由 `tools/create_umbrella_display_poses.py` 从动画伞模导出。建筑与伞均为三维几何体；街道延伸到远山前，湖面退到远景之后，没有桥。湖山背景使用 `misty-west-lake-panorama.png`，叠加多层缓慢流动的山雾，并与距离雾和昼夜调色结合。湖面使用同一远景的水面纹理与动态水波着色器。
+
+`js/site/HangingGallery3D.js` 将同一把绸伞 GLB 和不同作品纹理组合为可交互的三维悬伞；横绳固定到屋檐支点，并与挂绳及伞一起响应风力。滚轮沿街道前后移动相机，鼠标移动以小幅平滑转动视角。相机行程由两侧逐步向中线收拢的建筑连续覆盖，屋檐、立面与绳端锚点保持贴合。底部可选择作品，地面与门口同时陈列收拢、半开和展开的真实三维伞模型；点击悬挂展伞进入独立赏伞视图。晴天与带雾雨天自动切换，昼夜自动循环，共同调节环境光、太阳光、灯笼、雨滴、雾和湿地材质。湿地使用环境高光近似，未实现屏幕空间反射；雾为距离雾而非体积雾。
+
+材质由 [Poly Haven](https://polyhaven.com/license) 的 CC0 纹理制作：
+
+- [Fine Grained Wood](https://polyhaven.com/a/fine_grained_wood)、[White Plaster 02](https://polyhaven.com/a/white_plaster_02)、[Grey Roof 01](https://polyhaven.com/a/grey_roof_01)
+- [Monastery Stone Floor](https://polyhaven.com/a/monastery_stone_floor)、[Stone Wall](https://polyhaven.com/a/stone_wall) 和 [Worn Mossy Plasterwall](https://polyhaven.com/a/worn_mossy_plasterwall)
+
+湖山图使用内置图像生成工具制作，用于远景；不作为建筑模型。生成时使用的提示词：
+
+> Create an exceptionally natural photographic distant landscape background plate for a 3D West Lake, Hangzhou, Jiangnan old town street scene. Landscape orientation, a wide quiet fresh-water lake across the lower third, believable delicate water ripples and soft reflections, layered low rounded forest-covered green-blue mountains with translucent wisps of mountain mist, pale warm grey overcast sky in the upper third. Camera at the edge of the lake at human eye height. Refined realistic cinematic environment texture, old southern China atmosphere, muted earthy olive and blue-grey colors, gentle depth and natural detail. Keep center open and peaceful, visually continuous from edge to edge. NO buildings, no bridge, no street, no foreground trees, no people, no boats, no text, no logo, no frame, no close foreground. Not a 3D render, not an illustration, not ink painting. This is a distant environment backdrop, not a poster.
+
+画廊内的实物伞面样本来自项目收录的实物照片，见 `assets/patterns/heritage/` 的相关资料说明。原有悬伞背景图保留为历史素材，但当前三维模式不加载它。
 
 ## 分层场景
 

@@ -2,53 +2,27 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { InkFluidSystem } from "./InkFluidSystem.js?v=20261030-calligraphy-soft-v15";
+import { InkFluidSystem } from "./InkFluidSystem.js?v=20261106-studio-paper-v3";
 import { AmbientMusic } from "../features/AmbientMusic.js";
+import {
+  FABRIC_PROFILES,
+  createCanopyMaterial as createSharedCanopyMaterial,
+  normalizeFabricMaterial,
+  updateSilkDetailMaps
+} from "./UmbrellaCanopyMaterial.js?v=20261111-shared-silk-v7";
 
 const RADIUS = 1.78;
 // Keep the canopy folds aligned to the 36-bone layout used by the artwork.
 const RIBS = 36;
-const CANOPY_HEIGHT = 0.4;
+const CANOPY_HEIGHT = 0.22;
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 const smoothstep = (edge0, edge1, value) => {
   const t = clamp01((value - edge0) / (edge1 - edge0));
   return t * t * (3 - 2 * t);
 };
-const LEGACY_FABRIC_MATERIALS = Object.freeze({
-  scenery: "georgette", painting: "plainSilk", embroidery: "denseSilk",
-  silk: "plainSilk", gauze: "georgette", indigo: "denseSilk", blueCloth: "denseSilk", satin: "plainSilk", damask: "denseSilk"
-});
-const normalizeFabricMaterial = (material) => {
-  const normalized = LEGACY_FABRIC_MATERIALS[material] || material;
-  return Object.hasOwn(FABRIC_PROFILES, normalized) ? normalized : "georgette";
-};
-const FABRIC_PROFILES = Object.freeze({
-  georgette: {
-    // Light georgette: softly matte, with a restrained weave and dye color that
-    // remains visible from both sides of the canopy.
-    crown: 0.014, pleat: 0.0022, edge: -0.005, panelTension: 0.001,
-    roughness: 0.92, sheen: 0.13, sheenRoughness: 0.97, specular: 0.035, normal: 0.18, anisotropy: 0,
-    relief: 0.11, roughMap: 250, roughContrast: 3, transmission: 0.92,
-    studioRoughness: 0.91, studioSheen: 0.075, studioNormal: 0.075, studioSpecular: 0.018, studioWeave: 0.038
-  },
-  plainSilk: {
-    // Plain silk has a gentle broad sheen, without satin-like highlights.
-    crown: 0.014, pleat: 0.0026, edge: -0.007, panelTension: 0.0015,
-    roughness: 0.90, sheen: 0.16, sheenRoughness: 0.96, specular: 0.042, normal: 0.20, anisotropy: 0,
-    relief: 0.14, roughMap: 249, roughContrast: 4, transmission: 0.85,
-    studioRoughness: 0.90, studioSheen: 0.085, studioNormal: 0.08, studioSpecular: 0.02, studioWeave: 0.042
-  },
-  denseSilk: {
-    // Dense silk keeps the quietest highlights and a more legible woven grain.
-    crown: 0.017, pleat: 0.0034, edge: -0.010, panelTension: 0.0024,
-    roughness: 0.94, sheen: 0.11, sheenRoughness: 0.98, specular: 0.03, normal: 0.17, anisotropy: 0,
-    relief: 0.10, roughMap: 251, roughContrast: 3, transmission: 0.78,
-    studioRoughness: 0.94, studioSheen: 0.06, studioNormal: 0.09, studioSpecular: 0.016, studioWeave: 0.048
-  }
-});
 const PRESENTATION_LIGHTING = Object.freeze({
-  // Keep the homepage's original exposure and mood. Its umbrella is part of
-  // the lake scene, so it should not inherit the brighter studio treatment.
+  // Fluid previews retain the home atmosphere. Every 3D umbrella shares the
+  // studio's woven, translucent silk presentation.
   home: Object.freeze({
     ambient: 1.2, sky: "#fffdf7", ground: "#d1ddd5",
     keyColor: "#fff3dc", key: 0.82,
@@ -58,12 +32,14 @@ const PRESENTATION_LIGHTING = Object.freeze({
   // The studio needs enough neutral bounce to show the actual selected dye on
   // both sides of the thin canopy. The homepage preset above remains untouched.
   studio: Object.freeze({
-    ambient: 2.55, sky: "#fffefa", ground: "#ece9df",
-    keyColor: "#fffdf8", key: 0.86,
-    fillColor: "#edf4f0", fill: 0.96,
-    undersideColor: "#fffdf7", underside: 2.25,
-    // Georgette is thin enough to show a soft transmitted-light response.
-    // Keep it as a diffuse bounce, not a glossy highlight.
+    // Keep the display bright enough to read pale dye without clipping the
+    // bamboo hub to white. Silk remains matte under broad, low-contrast light.
+    ambient: 0.92, sky: "#fafafa", ground: "#d1d1d1",
+    keyColor: "#ffffff", key: 0.64,
+    fillColor: "#e5e5e5", fill: 0.22,
+    undersideColor: "#e8e8e8", underside: 0.3,
+    // A small amount of transmitted bounce keeps light georgette airy without
+    // introducing a shiny center-to-edge highlight.
     fabricLift: 1
   })
 });
@@ -75,6 +51,8 @@ export class ThreeUmbrellaPreview {
     this.frameHandle = 0;
     this.canvasTexture = null;
     this.textureRevision = -1;
+    this.textureWidth = 0;
+    this.textureHeight = 0;
     this.normalTexture = this.createSilkNormalTexture();
     this.roughnessTexture = this.createSilkRoughnessTexture();
     this.modelRoot = null;
@@ -95,6 +73,9 @@ export class ThreeUmbrellaPreview {
     this.audioFloor = 0;
     this.audioTime = 0;
     this.audioBands = [0, 0, 0, 0];
+    this.audioDanceBase = null;
+    this.userInteracting = false;
+    this.audioDanceResumeAt = 0;
     this.audioMeterBars = [...document.querySelectorAll("#audioReactiveBtn .audio-meter i")];
     this.canopyMesh = null;
     this.ribPivots = [];
@@ -217,8 +198,12 @@ export class ThreeUmbrellaPreview {
     this.controls.addEventListener("start", () => {
       window.clearTimeout(this.autoRotateTimer);
       this.controls.autoRotate = false;
+      this.userInteracting = true;
+      this.restoreAudioDancePose();
     });
     this.controls.addEventListener("end", () => {
+      this.userInteracting = false;
+      this.audioDanceResumeAt = performance.now() + 520;
       window.clearTimeout(this.autoRotateTimer);
       this.autoRotateTimer = window.setTimeout(() => {
         this.controls.autoRotate = this.displayMode === "3d" && this.host?.id !== "threeHost";
@@ -255,7 +240,7 @@ export class ThreeUmbrellaPreview {
   }
 
   applyPresentationLighting(host = this.host) {
-    const studio = this.displayMode === "3d" && host?.id === "threeHost";
+    const studio = this.displayMode === "3d";
     const preset = studio ? PRESENTATION_LIGHTING.studio : PRESENTATION_LIGHTING.home;
     this.activeLighting = preset;
     this.ambientLight.intensity = preset.ambient;
@@ -280,11 +265,23 @@ export class ThreeUmbrellaPreview {
         material.roughness = studio ? profile.studioRoughness : profile.roughness;
         material.sheen = studio ? profile.studioSheen : profile.sheen;
         material.specularIntensity = studio ? profile.studioSpecular : profile.specular;
+        // Keep the same soft silk veil in every 3D presentation so the
+        // homepage, studio and focused gallery view agree on the material.
+        const sheerSilk = this.displayMode === "3d";
+        if (material.transparent !== sheerSilk) {
+          material.transparent = sheerSilk;
+          material.needsUpdate = true;
+        }
+        material.opacity = sheerSilk ? profile.opacity : 1;
+        // Canopy depth behavior is shared across home, studio and gallery.
+        material.depthWrite = true;
       }
       const transmission = material?.userData?.dynamicUniforms?.uStudioFabricTransmission;
-      if (transmission) transmission.value = studio ? profile.transmission : 0;
+      if (transmission) transmission.value = this.displayMode === "3d" ? profile.transmission : 0;
       const weave = material?.userData?.dynamicUniforms?.uStudioWeaveStrength;
-      if (weave) weave.value = studio ? profile.studioWeave : 0;
+      if (weave) weave.value = this.displayMode === "3d" ? profile.studioWeave : 0;
+      const finish = material?.userData?.dynamicUniforms?.uStudioSilkFinish;
+      if (finish) finish.value = this.displayMode === "3d" ? profile.finish : 0;
     });
     // In the studio the canopy is a display surface, not a shadow receiver.
     // Keep self-shadowing from ribs and the double-sided cloth from muddying
@@ -297,14 +294,15 @@ export class ThreeUmbrellaPreview {
   }
 
   syncCanopyPresentationUniforms(host = this.host) {
-    const studio = this.displayMode === "3d" && host?.id === "threeHost";
+    const studio = this.displayMode === "3d";
     const profile = FABRIC_PROFILES[this.fabricMaterial] || FABRIC_PROFILES.georgette;
     this.dynamicMaterials.forEach((material) => {
       const uniforms = material?.userData?.dynamicUniforms;
       if (!uniforms) return;
       if (uniforms.uStudioFabricLift) uniforms.uStudioFabricLift.value = studio ? 1 : 0;
-      if (uniforms.uStudioFabricTransmission) uniforms.uStudioFabricTransmission.value = studio ? profile.transmission : 0;
-      if (uniforms.uStudioWeaveStrength) uniforms.uStudioWeaveStrength.value = studio ? profile.studioWeave : 0;
+      if (uniforms.uStudioFabricTransmission) uniforms.uStudioFabricTransmission.value = this.displayMode === "3d" ? profile.transmission : 0;
+      if (uniforms.uStudioWeaveStrength) uniforms.uStudioWeaveStrength.value = this.displayMode === "3d" ? profile.studioWeave : 0;
+      if (uniforms.uStudioSilkFinish) uniforms.uStudioSilkFinish.value = this.displayMode === "3d" ? profile.finish : 0;
     });
   }
 
@@ -316,6 +314,7 @@ export class ThreeUmbrellaPreview {
     this.applyCanopyCraftShape(profile);
     this.dynamicMaterials.forEach((material) => {
       if (!material?.isMeshPhysicalMaterial) return;
+      const mapsChanged = material.normalMap !== this.normalTexture || material.roughnessMap !== this.roughnessTexture;
       material.normalMap = this.normalTexture;
       material.roughnessMap = this.roughnessTexture;
       material.metalness = 0;
@@ -324,9 +323,9 @@ export class ThreeUmbrellaPreview {
       material.roughness = profile.roughness;
       material.sheen = profile.sheen;
       material.sheenRoughness = profile.sheenRoughness;
-      material.sheenColor?.set("#e0e9e2");
+      material.sheenColor?.set("#e5e5e5");
       material.specularIntensity = profile.specular;
-      material.specularColor?.set("#d5dfd8");
+      material.specularColor?.set("#dedede");
       material.anisotropy = profile.anisotropy;
       material.anisotropyRotation = 0;
       material.clearcoat = 0;
@@ -334,7 +333,13 @@ export class ThreeUmbrellaPreview {
       material.transmission = 0;
       material.thickness = 0;
       material.ior = 1.25;
-      const studio = this.displayMode === "3d" && this.host?.id === "threeHost";
+      const studio = this.displayMode === "3d";
+      const sheerSilk = this.displayMode === "3d";
+      if (material.transparent !== sheerSilk) {
+        material.transparent = sheerSilk;
+        material.needsUpdate = true;
+      }
+      material.opacity = sheerSilk ? profile.opacity : 1;
       const normal = studio ? profile.studioNormal : profile.normal;
       material.normalScale?.set(normal, normal);
       material.roughness = studio ? profile.studioRoughness : profile.roughness;
@@ -342,12 +347,13 @@ export class ThreeUmbrellaPreview {
       material.specularIntensity = studio ? profile.studioSpecular : profile.specular;
       const uniforms = material.userData?.dynamicUniforms;
       if (uniforms?.uStudioFabricLift) uniforms.uStudioFabricLift.value = studio ? 1 : 0;
-      if (uniforms?.uStudioFabricTransmission) uniforms.uStudioFabricTransmission.value = studio ? profile.transmission : 0;
-      if (uniforms?.uStudioWeaveStrength) uniforms.uStudioWeaveStrength.value = studio ? profile.studioWeave : 0;
+      if (uniforms?.uStudioFabricTransmission) uniforms.uStudioFabricTransmission.value = this.displayMode === "3d" ? profile.transmission : 0;
+      if (uniforms?.uStudioWeaveStrength) uniforms.uStudioWeaveStrength.value = this.displayMode === "3d" ? profile.studioWeave : 0;
+      if (uniforms?.uStudioSilkFinish) uniforms.uStudioSilkFinish.value = this.displayMode === "3d" ? profile.finish : 0;
       material.userData.audioBaseRoughness = profile.roughness;
       material.userData.audioBaseSheen = profile.sheen;
       material.userData.audioMaxSheen = profile.sheen + 0.001;
-      material.needsUpdate = true;
+      if (mapsChanged) material.needsUpdate = true;
     });
     this.syncCanopyPresentationUniforms();
     if (this.modelKind === "procedural" && this.foldProgress > 0) this.applyFoldProgress(this.foldProgress, false);
@@ -359,45 +365,16 @@ export class ThreeUmbrellaPreview {
   setFabricStyle(style) { return this.setFabricMaterial(style); }
 
   updateFabricDetailMaps(style) {
-    const size = this.normalTexture.image.width;
-    const normalPixels = this.normalTexture.image.data;
-    const roughPixels = this.roughnessTexture.image.data;
-    const profile = FABRIC_PROFILES[normalizeFabricMaterial(style)];
-    // Shared fine silk weave: alternating warp/weft, without large decorative relief.
-    // Avoid a conspicuous regular checker/weave. Fine, low-amplitude crossing
-    // fibers and a sparse slub component read as silk instead of old canvas.
-    const relief = (x, y) => Math.sin(x * Math.PI / 4.8 + Math.sin(y * 0.11) * 0.16)
-        * Math.sin(y * Math.PI / 5.7 + Math.sin(x * 0.13) * 0.14) * 0.16
-      + Math.sin((x * 0.71 + y * 0.39) * Math.PI / 9.5) * 0.025
-      + Math.sin((x * 13 + y * 7) * 0.37) * 0.012
-      + (normalizeFabricMaterial(style) === "denseSilk" ? Math.sin(x * Math.PI / 3.1 + Math.sin(y * 0.18)) * 0.008 : 0);
-    const samples = new Float32Array(size * size);
-    for (let y = 0; y < size; y += 1) for (let x = 0; x < size; x += 1) samples[y * size + x] = relief(x, y);
-    const at = (x, y) => samples[((y + size) % size) * size + ((x + size) % size)];
-    for (let y = 0; y < size; y += 1) {
-      for (let x = 0; x < size; x += 1) {
-        const dx = (at(x + 1, y) - at(x - 1, y)) * 0.5 * profile.relief;
-        const dy = (at(x, y + 1) - at(x, y - 1)) * 0.5 * profile.relief;
-        const length = Math.hypot(dx, dy, 1);
-        const index = (y * size + x) * 4;
-        normalPixels[index] = Math.round(((-dx / length) * 0.56 + 0.5) * 255);
-        normalPixels[index + 1] = Math.round(((-dy / length) * 0.56 + 0.5) * 255);
-        normalPixels[index + 2] = Math.round((1 / length) * 255);
-        normalPixels[index + 3] = 255;
-        const textureVariation = samples[y * size + x];
-        const value = Math.max(0, Math.min(255, profile.roughMap + textureVariation * profile.roughContrast));
-        roughPixels[index] = value;
-        roughPixels[index + 1] = value;
-        roughPixels[index + 2] = value;
-        roughPixels[index + 3] = 255;
-      }
-    }
-    this.normalTexture.needsUpdate = true;
-    this.roughnessTexture.needsUpdate = true;
+    if (this.detailMapStyle === style && this.detailNormalTexture === this.normalTexture && this.detailRoughnessTexture === this.roughnessTexture) return;
+    updateSilkDetailMaps(this.normalTexture, this.roughnessTexture, style);
+    this.detailMapStyle = style;
+    this.detailNormalTexture = this.normalTexture;
+    this.detailRoughnessTexture = this.roughnessTexture;
   }
 
   captureCanopyShapeTargets(meshes) {
     this.canopyShapeTargets = [];
+    this.canopyShapeProfile = null;
     const targets = meshes.filter((mesh) => mesh?.isMesh && !mesh.isSkinnedMesh);
     targets.forEach((mesh) => {
       // Isolate the canopy from any shared GLB geometry before adding the
@@ -417,7 +394,7 @@ export class ThreeUmbrellaPreview {
   }
 
   applyCanopyCraftShape(profile = FABRIC_PROFILES[this.fabricMaterial] || FABRIC_PROFILES.georgette) {
-    if (!this.canopyShapeTargets?.length) return;
+    if (!this.canopyShapeTargets?.length || this.canopyShapeProfile === profile) return;
     const bounds = new THREE.Box3();
     const worldPoint = new THREE.Vector3();
     this.canopyShapeTargets.forEach(({ mesh, rest }) => {
@@ -464,6 +441,7 @@ export class ThreeUmbrellaPreview {
       geometry.computeBoundingBox();
       if (hasFoldRest) geometry.userData.foldRestPositions = new Float32Array(attribute.array);
     });
+    this.canopyShapeProfile = profile;
   }
 
   setBackgroundPointerHandler(handler) {
@@ -537,7 +515,8 @@ export class ThreeUmbrellaPreview {
   }
 
   updateFlowField(now) {
-    if (!this.inkFluid || !this.active) return;
+    const hostId = this.host?.id;
+    if (!this.inkFluid || !this.active || (hostId !== "fluidHost" && hostId !== "threeHost")) return;
     // Fluid inputs and render targets live in the square canopy UV domain;
     // camera aspect must not stretch circular pigment splats in 3D mode.
     this.inkFluid.aspect = 1;
@@ -545,12 +524,12 @@ export class ThreeUmbrellaPreview {
     this.syncInkMaterials();
   }
 
-  syncInkMaterials() {
+  syncInkMaterials({ showLiveInk = this.displayMode === "3d" && this.host?.id === "threeHost" } = {}) {
     if (!this.inkFluid) return;
     this.dynamicMaterials.forEach((material) => {
       const uniforms = material?.userData?.dynamicUniforms;
       if (uniforms?.uInkDye) uniforms.uInkDye.value = this.inkFluid.dyeTexture;
-      if (uniforms?.uInkOpacity) uniforms.uInkOpacity.value = this.inkOpacity;
+      if (uniforms?.uInkOpacity) uniforms.uInkOpacity.value = showLiveInk ? this.inkOpacity : 0;
     });
   }
 
@@ -696,89 +675,16 @@ export class ThreeUmbrellaPreview {
   }
 
   createCanopyMaterial() {
-    const profile = FABRIC_PROFILES[this.fabricMaterial] || FABRIC_PROFILES.georgette;
-    const material = new THREE.MeshPhysicalMaterial({
-      color: "#ffffff",
-      map: this.canvasTexture,
-      normalMap: this.normalTexture,
-      normalScale: new THREE.Vector2(profile.normal, profile.normal),
-      roughnessMap: this.roughnessTexture,
-      roughness: profile.roughness,
-      metalness: 0,
-      envMap: null,
-      envMapIntensity: 0,
-      sheen: profile.sheen,
-      sheenRoughness: profile.sheenRoughness,
-      sheenColor: new THREE.Color("#e0e9e2"),
-      specularIntensity: profile.specular,
-      specularColor: new THREE.Color("#d5dfd8"),
-      anisotropy: profile.anisotropy,
-      anisotropyRotation: 0,
-      clearcoat: 0,
-      clearcoatRoughness: 1,
-      transmission: 0,
-      thickness: 0,
-      ior: 1.25,
-      side: THREE.DoubleSide
+    return createSharedCanopyMaterial({
+      canvasTexture: this.canvasTexture,
+      normalTexture: this.normalTexture,
+      roughnessTexture: this.roughnessTexture,
+      inkDyeTexture: this.inkFluid?.dyeTexture || null,
+      inkOpacity: this.inkOpacity,
+      fabricMaterial: this.fabricMaterial,
+      displayMode: this.displayMode,
+      studioFabricLift: PRESENTATION_LIGHTING.studio.fabricLift
     });
-    const dynamicUniforms = {
-      uAudioLevel: { value: 0 },
-      uAudioTime: { value: 0 },
-      uInkDye: { value: this.inkFluid?.dyeTexture || null },
-      uInkOpacity: { value: this.inkOpacity },
-      uStudioFabricLift: { value: this.displayMode === "3d" && this.host?.id === "threeHost" ? PRESENTATION_LIGHTING.studio.fabricLift : 0 },
-      uStudioFabricTransmission: { value: this.displayMode === "3d" && this.host?.id === "threeHost" ? profile.transmission : 0 },
-      uStudioWeaveStrength: { value: this.displayMode === "3d" && this.host?.id === "threeHost" ? profile.studioWeave : 0 }
-    };
-    material.userData.dynamicUniforms = dynamicUniforms;
-    material.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, dynamicUniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nuniform float uAudioLevel;\nuniform float uAudioTime;\nvarying vec2 vCanopyUv;")
-        .replace("#include <uv_vertex>", "#include <uv_vertex>\nvCanopyUv = uv;")
-        .replace("#include <begin_vertex>", `#include <begin_vertex>
-          float canopyRadius = length(vCanopyUv - vec2(0.5)) * 1.4142;
-          float audioCrease = sin(uAudioTime * 5.0 - canopyRadius * 13.0) * uAudioLevel * 0.002;
-          transformed += objectNormal * audioCrease;`);
-      shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", "#include <common>\nuniform float uAudioLevel;\nuniform float uAudioTime;\nuniform sampler2D uInkDye;\nuniform float uInkOpacity;\nuniform float uStudioFabricLift;\nuniform float uStudioFabricTransmission;\nuniform float uStudioWeaveStrength;\nvarying vec2 vCanopyUv;")
-        .replace("#include <map_fragment>", `#include <map_fragment>
-          vec4 wetInk = texture2D(uInkDye, vCanopyUv);
-          // Lower the 3D overlay gain evenly so a single stroke does not show
-          // exaggerated wet/dry concentration changes on the curved canopy.
-          float wetInkAlpha = clamp(wetInk.a * uInkOpacity * 0.78, 0.0, 0.76);
-          diffuseColor.rgb = mix(diffuseColor.rgb, wetInk.rgb, wetInkAlpha);
-          // Keep the dyed fabric color intact. Studio brightness is supplied
-          // as a neutral display floor below rather than tinting the cloth.
-        `)
-        // Always compile the studio branch. The preview is first created in
-        // fluid mode and later moved to #threeHost, so a creation-time host
-        // check can leave the 3D canopy stuck on its dark physical-light shader.
-        shader.fragmentShader = shader.fragmentShader.replace("#include <colorspace_fragment>", `#include <colorspace_fragment>
-          if (uStudioFabricLift > 0.001) {
-          const float STUDIO_TAU = 6.28318530718;
-          // Use one display conversion from the actual dyed canvas. A soft
-          // value curve restores light silk on the underside while preserving
-          // the chosen hue and the gentle variations in the artwork.
-          float studioWarp = sin((vCanopyUv.x * 74.0 + 0.10 * sin(vCanopyUv.y * 13.0)) * STUDIO_TAU);
-          float studioWeft = sin((vCanopyUv.y * 70.0 + 0.08 * sin(vCanopyUv.x * 16.0)) * STUDIO_TAU);
-          float studioSlub = sin((vCanopyUv.x * 0.71 + vCanopyUv.y * 0.43) * STUDIO_TAU * 19.0);
-          float studioGrain = 1.0 + uStudioWeaveStrength * (0.26 * studioWarp + 0.24 * studioWeft + 0.18 * studioWarp * studioWeft + 0.08 * studioSlub);
-          float studioRadius = length(vCanopyUv - vec2(0.5)) * 1.4142;
-          // Keep the edge softly shaded, never vignetted to a dark outline.
-          float studioDome = 1.005 - 0.018 * smoothstep(0.08, 1.0, studioRadius);
-          vec3 studioSilk = pow(max(diffuseColor.rgb, vec3(0.0)), vec3(0.78));
-          studioSilk = studioSilk * 1.035 + vec3(0.010, 0.009, 0.006);
-          studioSilk = studioSilk * studioGrain * studioDome;
-            vec3 studioDisplayColor = linearToOutputTexel(vec4(clamp(studioSilk, 0.0, 1.0), diffuseColor.a)).rgb;
-            // A restrained physical contribution keeps the dome readable;
-            // no metallic, clearcoat or hard specular shine is added.
-            gl_FragColor.rgb = mix(studioDisplayColor, gl_FragColor.rgb, 0.08);
-          }
-        `);
-    };
-    material.customProgramCacheKey = () => "jiangnan-canopy-gpu-ink-v35-soft-silk-display";
-    return material;
   }
 
   createProceduralUmbrella() {
@@ -799,11 +705,11 @@ export class ThreeUmbrellaPreview {
     this.dynamicMaterials = [canopy.material];
 
     const bamboo = new THREE.MeshPhysicalMaterial({
-      color: "#94764e", roughness: 0.7, metalness: 0,
-      clearcoat: 0.035, clearcoatRoughness: 0.88
+      color: "#8c6e49", roughness: 0.84, metalness: 0,
+      clearcoat: 0.015, clearcoatRoughness: 0.96
     });
-    const bambooLight = new THREE.MeshStandardMaterial({ color: "#c3aa7c", roughness: 0.76 });
-    const seamMaterial = new THREE.MeshStandardMaterial({ color: "#a8936d", roughness: 0.88 });
+    const bambooLight = new THREE.MeshStandardMaterial({ color: "#b49768", roughness: 0.86 });
+    const seamMaterial = new THREE.MeshStandardMaterial({ color: "#987e5c", roughness: 0.9 });
     for (let rib = 0; rib < RIBS; rib += 1) {
       const angle = -Math.PI / 2 + rib * Math.PI * 2 / RIBS;
       const radialAxis = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
@@ -961,6 +867,15 @@ export class ThreeUmbrellaPreview {
         if (!material) return;
         const original = material.userData.modelOriginal;
         if (!original) return;
+        if (this.dynamicMaterials.includes(material)) {
+          const profile = FABRIC_PROFILES[this.fabricMaterial] || FABRIC_PROFILES.georgette;
+          const transparent = this.displayMode === "3d";
+          if (material.transparent !== transparent) material.needsUpdate = true;
+          material.opacity = transparent ? profile.opacity : 1;
+          material.transparent = transparent;
+          material.depthWrite = true;
+          return;
+        }
         material.opacity = original.opacity;
         material.transparent = original.transparent;
         material.depthWrite = original.depthWrite;
@@ -1068,13 +983,14 @@ export class ThreeUmbrellaPreview {
       this.audioBands = this.audioBands.map((value) => value * 0.86);
     }
     this.audioTime = now;
-    const visualLevel = THREE.MathUtils.clamp(this.audioLevel * 0.76 + this.audioPulse * 0.92, 0, 1);
+    const visualLevel = THREE.MathUtils.clamp(this.audioLevel * 1.28 + this.audioPulse * 1.12, 0, 1);
+    this.updateAudioDance(now, visualLevel);
     this.audioMeterBars.forEach((bar, index) => { bar.style.transform = `scaleY(${0.18 + this.audioBands[index] * 0.82})`; });
     // Keep audio response atmospheric. Large fill values wash out the silk weave
     // and make the canopy look polished or reflective.
-    this.audioFillLight.intensity = this.audioFillBaseIntensity + visualLevel * 0.01;
+    this.audioFillLight.intensity = this.audioFillBaseIntensity + visualLevel * 0.38;
     this.audioFillLight.position.set(4, 2.4, -3.5);
-    this.ambientLight.intensity = this.activeLighting.ambient + visualLevel * 0.02;
+    this.ambientLight.intensity = this.activeLighting.ambient + visualLevel * 0.11;
     this.dynamicMaterials.forEach((material) => {
       const uniforms = material?.userData?.dynamicUniforms;
       if (uniforms?.uAudioLevel) uniforms.uAudioLevel.value = visualLevel;
@@ -1083,9 +999,51 @@ export class ThreeUmbrellaPreview {
     });
   }
 
+  updateAudioDance(now, visualLevel) {
+    const canDance = this.ambientMusic?.playing
+      && this.displayMode === "3d"
+      && this.host?.id === "threeHost"
+      && !this.userInteracting
+      && now * 1000 >= this.audioDanceResumeAt
+      && this.controls.enabled
+      && !this.cameraTween;
+    if (!canDance || !this.modelRoot) {
+      if (!this.userInteracting) this.restoreAudioDancePose();
+      return;
+    }
+    if (!this.audioDanceBase) {
+      this.audioDanceBase = {
+        position: this.modelRoot.position.clone(),
+        rotation: this.modelRoot.rotation.clone()
+      };
+    }
+    const time = now;
+    const weight = .25 + visualLevel * .75;
+    const base = this.audioDanceBase;
+    this.modelRoot.position.copy(base.position);
+    this.modelRoot.position.x += Math.sin(time * .72 + .4) * (.035 + .075 * weight);
+    this.modelRoot.position.y += Math.sin(time * 1.34) * (.025 + .06 * weight);
+    this.modelRoot.position.z += Math.cos(time * .56 + .7) * (.025 + .045 * weight);
+    this.modelRoot.rotation.copy(base.rotation);
+    this.modelRoot.rotation.x += Math.sin(time * 1.08 + .3) * (.025 + .045 * weight);
+    this.modelRoot.rotation.y += Math.sin(time * .48 + 1.1) * (.035 + .075 * weight);
+    this.modelRoot.rotation.z += Math.sin(time * .82 + 1.8) * (.028 + .05 * weight);
+  }
+
+  restoreAudioDancePose() {
+    if (!this.audioDanceBase || !this.modelRoot) {
+      this.audioDanceBase = null;
+      return;
+    }
+    this.modelRoot.position.copy(this.audioDanceBase.position);
+    this.modelRoot.rotation.copy(this.audioDanceBase.rotation);
+    this.audioDanceBase = null;
+  }
+
   async dispose() {
     this.active = false;
     cancelAnimationFrame(this.frameHandle);
+    cancelAnimationFrame(this.studioFocusFrame);
     this.resizeObserver?.disconnect();
     await this.ambientMusic?.dispose();
     this.removeModel();
@@ -1103,6 +1061,7 @@ export class ThreeUmbrellaPreview {
 
   removeModel() {
     this.canopyShapeTargets = [];
+    this.restoreAudioDancePose();
     if (!this.modelRoot) return;
     this.mixer?.stopAllAction();
     this.mixer = null;
@@ -1287,8 +1246,12 @@ export class ThreeUmbrellaPreview {
   }
 
   setArtworkCanvas(canvas, revision = null) {
-    if (this.canvasTexture && revision !== null && revision === this.textureRevision) return;
-    if (!this.canvasTexture) {
+    const sizeChanged = canvas.width !== this.textureWidth || canvas.height !== this.textureHeight;
+    if (this.canvasTexture && !sizeChanged && this.canvasTexture.image === canvas && revision !== null && revision === this.textureRevision) return;
+    if (!this.canvasTexture || sizeChanged) {
+      // WebGL texture storage keeps its original dimensions. Reusing it for a
+      // differently sized canvas leaves part of the previous artwork visible.
+      const previousTexture = this.canvasTexture;
       this.canvasTexture = new THREE.CanvasTexture(canvas);
       this.canvasTexture.colorSpace = THREE.SRGBColorSpace;
       this.canvasTexture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
@@ -1297,13 +1260,73 @@ export class ThreeUmbrellaPreview {
       this.canvasTexture.magFilter = THREE.LinearFilter;
       this.canvasTexture.generateMipmaps = true;
       this.bindCanopyTexture();
+      previousTexture?.dispose();
     } else {
       this.canvasTexture.image = canvas;
       this.canvasTexture.needsUpdate = true;
     }
     this.artworkCanvas = canvas;
+    this.textureWidth = canvas.width;
+    this.textureHeight = canvas.height;
     this.textureRevision = revision;
     this.renderOnce();
+  }
+
+  captureStudioArtworkTexture(artworkCanvas) {
+    if (!artworkCanvas?.width || !artworkCanvas?.height || !this.inkFluid?.dyeTexture) return null;
+    // A freshly frozen editor source is independent of whichever work the
+    // shared 3D preview last displayed, including its initial green texture.
+    const baseTexture = new THREE.CanvasTexture(artworkCanvas);
+    baseTexture.colorSpace = THREE.SRGBColorSpace;
+    baseTexture.minFilter = THREE.LinearFilter;
+    baseTexture.generateMipmaps = false;
+    const size = artworkCanvas.width;
+    const target = new THREE.WebGLRenderTarget(size, size, { type: THREE.UnsignedByteType, depthBuffer: false, stencilBuffer: false });
+    target.texture.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.ShaderMaterial({
+      uniforms: { uBase: { value: baseTexture }, uDye: { value: this.inkFluid.dyeTexture }, uOpacity: { value: this.inkOpacity } },
+      depthTest: false, depthWrite: false, toneMapped: false,
+      vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
+      fragmentShader: `varying vec2 vUv;
+        uniform sampler2D uBase; uniform sampler2D uDye; uniform float uOpacity;
+        void main(){
+          vec4 base = texture2D(uBase, vUv);
+          vec4 dye = texture2D(uDye, vUv);
+          float amount = clamp(dye.a * uOpacity * 0.78, 0.0, 0.76);
+          gl_FragColor = vec4(mix(base.rgb, dye.rgb, amount), base.a);
+          #include <colorspace_fragment>
+        }`
+    });
+    const scene = new THREE.Scene();
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    scene.add(new THREE.Mesh(geometry, material));
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const previousTarget = this.renderer.getRenderTarget();
+    const previousScissorTest = this.renderer.getScissorTest();
+    try {
+      while (this.inkFluid.pendingSplats.length) this.inkFluid.step(performance.now(), true);
+      material.uniforms.uDye.value = this.inkFluid.dyeTexture;
+      this.renderer.setRenderTarget(target);
+      this.renderer.setScissorTest(false);
+      this.renderer.clear(true, true, true);
+      this.renderer.render(scene, camera);
+      const pixels = new Uint8Array(size * size * 4);
+      this.renderer.readRenderTargetPixels(target, 0, 0, size, size, pixels);
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = size;
+      const context = canvas.getContext("2d");
+      const image = context.createImageData(size, size);
+      for (let y = 0; y < size; y += 1) {
+        image.data.set(pixels.subarray((size - 1 - y) * size * 4, (size - y) * size * 4), y * size * 4);
+      }
+      context.putImageData(image, 0, 0);
+      return canvas;
+    } finally {
+      this.renderer.setRenderTarget(previousTarget);
+      this.renderer.setScissorTest(previousScissorTest);
+      geometry.dispose(); material.dispose(); target.dispose(); baseTexture.dispose();
+      this.renderOnce();
+    }
   }
 
   /**
@@ -1377,11 +1400,7 @@ export class ThreeUmbrellaPreview {
       this.controls.enabled = false;
       this.controls.autoRotate = false;
       this.setArtworkCanvas(artworkCanvas, revision);
-      this.dynamicMaterials.forEach((material) => {
-        const opacity = material.userData?.dynamicUniforms?.uInkOpacity;
-        if (opacity) opacity.value = 0;
-      });
-      this.syncInkMaterials();
+      this.syncInkMaterials({ showLiveInk: false });
 
       renderer.setClearColor(0x000000, 0);
       renderer.setSize(size, size, false);
@@ -1614,12 +1633,11 @@ export class ThreeUmbrellaPreview {
   }
 
   bindCanopyTexture() {
-    if (!this.modelRoot || !this.canvasTexture) return;
-    this.modelRoot.traverse((object) => {
-      if (object.name === "silk-canopy" && object.material) {
-        object.material.map = this.canvasTexture;
-        object.material.needsUpdate = true;
-      }
+    if (!this.canvasTexture) return;
+    this.dynamicMaterials.forEach((material) => {
+      if (!material) return;
+      material.map = this.canvasTexture;
+      material.needsUpdate = true;
     });
   }
 
@@ -1706,7 +1724,7 @@ export class ThreeUmbrellaPreview {
       // material is also used on rib seams and must not make those ribs canopy targets.
       const label = object.name.toLowerCase();
       const namedCanopy = /canopy|cloth|fabric|silk[-_ ]?canopy|umbrella[-_ ]?fabric|伞面|伞布|绸面/.test(label)
-        && !/rib|seam|hem|edge|trim/.test(label);
+        && !/rib|seam|hem|edge|trim|rosette|hub|finial/.test(label);
       const uv = object.geometry.attributes.uv;
       const hasUV = Boolean(uv && uv.itemSize >= 2 && uv.count === object.geometry.attributes.position.count);
       candidates.push({ object, box, size, namedCanopy, hasUV, score: size.x * size.z });
@@ -1786,9 +1804,9 @@ export class ThreeUmbrellaPreview {
         material.roughness = profile.roughness;
         material.sheen = profile.sheen;
         material.sheenRoughness = profile.sheenRoughness;
-        material.sheenColor.set("#e0e9e2");
+        material.sheenColor.set("#e5e5e5");
         material.specularIntensity = profile.specular;
-        material.specularColor.set("#d5dfd8");
+        material.specularColor.set("#dedede");
         material.anisotropy = profile.anisotropy;
         material.clearcoat = 0;
         material.clearcoatRoughness = 1;
@@ -1803,6 +1821,71 @@ export class ThreeUmbrellaPreview {
       });
       object.material = Array.isArray(object.material) ? replacement : replacement[0];
     });
+
+    // The original GLB gives the "Warm Bamboo" material no base colour, so it
+    // defaults to white. With the studio fill it turned the hub and finial into
+    // a bright white disc. Normalize every non-canopy craft material to the
+    // warm, matte bamboo/silk palette of a West Lake umbrella.
+    const canopyObjects = new Set(targets.map(({ object }) => object));
+    const styledCraftMaterials = new Set();
+    let visibleRibMaterial = null;
+    root.traverse((object) => {
+      if (!object.isMesh || canopyObjects.has(object)) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      if (/bamboo[-_ ]?main[-_ ]?rib/i.test(object.name)) {
+        if (!visibleRibMaterial) {
+          const source = materials.find(Boolean);
+          visibleRibMaterial = source?.clone?.() || new THREE.MeshStandardMaterial();
+          visibleRibMaterial.name = "Visible West Lake Bamboo Ribs";
+          visibleRibMaterial.color?.set("#8a6842");
+          if (visibleRibMaterial.emissive) {
+            visibleRibMaterial.emissive.set("#3b2815");
+            visibleRibMaterial.emissiveIntensity = 0.08;
+          }
+          visibleRibMaterial.roughness = 0.9;
+          visibleRibMaterial.metalness = 0;
+          if ("clearcoat" in visibleRibMaterial) visibleRibMaterial.clearcoat = 0;
+          if ("envMapIntensity" in visibleRibMaterial) visibleRibMaterial.envMapIntensity = 0;
+          visibleRibMaterial.transparent = true;
+          visibleRibMaterial.opacity = 0.68;
+          // The model places the long ribs just beneath the silk. Drawing the
+          // same authored geometry as a low-opacity x-ray layer keeps all 36
+          // bamboo lines continuous from the hub to the rim through the veil.
+          visibleRibMaterial.depthTest = false;
+          visibleRibMaterial.depthWrite = false;
+          visibleRibMaterial.side = THREE.DoubleSide;
+          visibleRibMaterial.needsUpdate = true;
+        }
+        object.material = visibleRibMaterial;
+        object.castShadow = false;
+        object.renderOrder = 12;
+        return;
+      }
+      materials.forEach((material) => {
+        if (!material || styledCraftMaterials.has(material)) return;
+        styledCraftMaterials.add(material);
+        const label = `${material.name || ""} ${object.name || ""}`.toLowerCase();
+        if (/warm[-_ ]?bamboo|finial|hub|runner|grip/.test(label)) {
+          material.color?.set("#ad8a5d");
+          material.roughness = 0.84;
+        } else if (/bamboo|rib|shaft|internode/.test(label)) {
+          material.color?.set("#93744c");
+          material.roughness = 0.86;
+        } else if (/seam/.test(label)) {
+          material.color?.set("#947a58");
+          material.roughness = 0.9;
+        } else if (/binding|edge|hem|trim/.test(label)) {
+          material.color?.set("#a58a66");
+          material.roughness = 0.9;
+        }
+        material.metalness = 0;
+        if ("envMapIntensity" in material) material.envMapIntensity = 0;
+        if ("clearcoat" in material) material.clearcoat = 0;
+        if ("specularIntensity" in material) material.specularIntensity = Math.min(material.specularIntensity ?? 0, 0.08);
+        material.needsUpdate = true;
+      });
+    });
+
     const retainedMaterials = new Set();
     root.traverse((object) => {
       if (!object.isMesh) return;
@@ -1819,12 +1902,15 @@ export class ThreeUmbrellaPreview {
     wrapper.name = "imported-blender-umbrella";
     wrapper.add(root);
     wrapper.updateMatrixWorld(true);
-    const bounds = new THREE.Box3().setFromObject(wrapper);
+    // Multi-pose morph targets have a conservative combined bounding box far
+    // larger than any actual pose. Measure the evaluated open pose instead so
+    // the umbrella is not scaled down and pushed out of the studio view.
+    const bounds = new THREE.Box3().setFromObject(wrapper, true);
     const size = bounds.getSize(new THREE.Vector3());
     const maxDimension = Math.max(size.x, size.y, size.z) || 1;
     wrapper.scale.setScalar(3.45 / maxDimension);
     wrapper.updateMatrixWorld(true);
-    const centered = new THREE.Box3().setFromObject(wrapper);
+    const centered = new THREE.Box3().setFromObject(wrapper, true);
     const center = centered.getCenter(new THREE.Vector3());
     wrapper.position.sub(center);
     this.scene.add(wrapper);
@@ -1870,26 +1956,54 @@ export class ThreeUmbrellaPreview {
   fitStudioInitialView() {
     // Keep the studio's first view close enough to read the silk and ribs,
     // with a modest side angle that also reveals the canopy's shallow arc.
-    const bounds = this.canopyMesh ? new THREE.Box3().setFromObject(this.canopyMesh) : null;
+    const bounds = this.canopyMesh ? new THREE.Box3().setFromObject(this.canopyMesh, true) : null;
     const canopySize = bounds?.getSize(new THREE.Vector3()) || new THREE.Vector3(3.45, 0.6, 3.45);
     const center = bounds?.getCenter(new THREE.Vector3()) || new THREE.Vector3(0, 0.2, 0);
     const diameter = Math.max(canopySize.x, canopySize.z, 0.1);
     const tangent = Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5));
-    const distance = diameter / (2 * tangent * 1.45);
-    const elevation = THREE.MathUtils.degToRad(50);
+    const distance = diameter / (2 * tangent) * 1.12;
+    const elevation = THREE.MathUtils.degToRad(39);
+    const azimuth = THREE.MathUtils.degToRad(14);
     // Desktop leaves the interpretation text to the left of the canopy. On a
     // narrow screen that text moves above the viewer, so keep the umbrella
     // close to center and preserve room around its edge.
     const narrowViewer = this.host.clientWidth < 720;
-    center.x -= diameter * (narrowViewer ? 0 : 0.18);
+    this.studioCanopyDiameter = diameter;
+    this.studioTargetOffset = document.getElementById("studioPage")?.classList.contains("is-panel-collapsed") || narrowViewer ? 0 : diameter * .08;
+    center.x -= this.studioTargetOffset;
+    center.y -= diameter * .09;
     this.controls.target.copy(center);
     this.camera.position.set(
-      center.x + distance * 0.002,
+      center.x + distance * Math.cos(elevation) * Math.sin(azimuth),
       center.y + distance * Math.sin(elevation),
-      center.z + distance * Math.cos(elevation)
+      center.z + distance * Math.cos(elevation) * Math.cos(azimuth)
     );
     this.controls.autoRotate = false;
     this.controls.update();
+  }
+
+  setStudioPanelCollapsed(collapsed) {
+    if (this.displayMode !== "3d" || this.host?.id !== "threeHost" || !this.studioCanopyDiameter) return;
+    const next = collapsed || this.host.clientWidth < 720 ? 0 : this.studioCanopyDiameter * .08;
+    const initialOffset = this.studioTargetOffset || 0;
+    const shift = initialOffset - next;
+    if (Math.abs(shift) < .0001) return;
+    if (this.studioFocusFrame) cancelAnimationFrame(this.studioFocusFrame);
+    const from = performance.now();
+    let previous = 0;
+    const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 650;
+    const step = (now) => {
+      const t = Math.min(1, (now - from) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const delta = shift * (eased - previous);
+      this.controls.target.x += delta;
+      this.camera.position.x += delta;
+      this.studioTargetOffset = initialOffset - shift * eased;
+      previous = eased;
+      if (t < 1) this.studioFocusFrame = requestAnimationFrame(step);
+      else this.studioFocusFrame = 0;
+    };
+    this.studioFocusFrame = requestAnimationFrame(step);
   }
 
   playViewTransition(duration = 920) {
@@ -1913,12 +2027,30 @@ export class ThreeUmbrellaPreview {
     const width = Math.max(1, this.host.clientWidth);
     const height = Math.max(1, this.host.clientHeight);
     this.camera.aspect = width / height;
+    if (this.host.id === "homeUmbrellaHost" && width >= 981) {
+      // Render across the viewport while keeping the umbrella in the right
+      // half; enlarging it then reaches the screen edge instead of a box.
+      this.camera.setViewOffset(width, height, -width * .235, 0, width, height);
+    } else if (this.camera.view?.enabled) {
+      this.camera.clearViewOffset();
+    }
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
     this.renderOnce();
   }
 
+  withRenderBatch(callback) {
+    const wasBatching = this.isRenderBatching;
+    this.isRenderBatching = true;
+    try { return callback(); }
+    finally {
+      this.isRenderBatching = wasBatching;
+      if (!wasBatching) this.renderOnce();
+    }
+  }
+
   renderOnce() {
+    if (this.isRenderBatching) return;
     if (!this.renderer || !this.host.clientWidth || !this.host.clientHeight) return;
     if (this.displayMode === "fluid") {
       this.inkFluid?.renderOverlay();
@@ -1933,6 +2065,7 @@ export class ThreeUmbrellaPreview {
   setActive(active) {
     this.active = Boolean(active);
     if (!this.active) {
+      this.restoreAudioDancePose();
       cancelAnimationFrame(this.frameHandle);
       this.frameHandle = 0;
       this.lastFrameAt = 0;

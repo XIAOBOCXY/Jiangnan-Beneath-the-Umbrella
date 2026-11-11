@@ -10,12 +10,13 @@ const RIB_COUNT = 36;
 const MAX_VIEW_ZOOM = 18;
 const CLOTH_SOURCE = new URL("../../assets/umbrella-cloth.png", import.meta.url).href;
 // 以馆藏常见的青绿染色乔其纱作为初始伞面，避免新作品默认呈现成白纸面。
-const DEFAULT_SETTINGS = { fabricColor: "#718c7d", fabricMaterial: "georgette" };
+const DEFAULT_SETTINGS = { fabricColor: "#8aa79b", fabricMaterial: "georgette" };
 
 export class CanvasManager {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
+    this.selectionCanvas = document.getElementById("selectionOverlay");
     this.dpr = 1;
     // The canopy nearly fills the available square editor area by default.
     this.viewZoom = 1;
@@ -68,6 +69,14 @@ export class CanvasManager {
       context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     });
     this.ctx = this.canvas.getContext("2d");
+    if (this.selectionCanvas) {
+      // Give the selection layer room beyond the artwork; it is never exported.
+      const overlayDpr = Math.min(this.dpr, 1.5);
+      this.selectionCanvas.width = Math.round(SIZE * 3 * overlayDpr);
+      this.selectionCanvas.height = Math.round(SIZE * 3 * overlayDpr);
+      this.selectionCtx = this.selectionCanvas.getContext("2d");
+      this.selectionCtx.setTransform(overlayDpr, 0, 0, overlayDpr, SIZE * overlayDpr, SIZE * overlayDpr);
+    }
     Object.entries(this.layers).forEach(([name, layer]) => { this[`${name}Ctx`] = layer.canvas.getContext("2d"); });
     this.renderBase(this.lastSettings);
     if (this.onResize) this.onResize();
@@ -109,12 +118,13 @@ export class CanvasManager {
     const stage = this.canvas.closest(".canvas-stage");
     const before = stage?.getBoundingClientRect();
     // Detailed inspection extends beyond the original square editor viewport.
-    this.viewZoom = Math.max(0.6, Math.min(MAX_VIEW_ZOOM, zoom));
+    this.viewZoom = Math.max(0.35, Math.min(MAX_VIEW_ZOOM, zoom));
     this.viewRotation = rotation;
     this.viewPanX = panX;
     this.viewPanY = panY;
-    const viewport = document.getElementById("canvasArtworkViewport");
-    if (viewport) viewport.style.transform = `translate(${this.viewPanX}px, ${this.viewPanY}px) scale(${this.viewZoom}) rotate(${this.viewRotation}rad)`;
+    const viewports = [document.getElementById("canvasArtworkViewport"), document.getElementById("selectionOverlayViewport")].filter(Boolean);
+    const updateViewports = () => viewports.forEach((viewport) => { viewport.style.transform = `translate(${this.viewPanX}px, ${this.viewPanY}px) scale(${this.viewZoom}) rotate(${this.viewRotation}rad)`; });
+    updateViewports();
     this.updateZoomLayout();
     // Reserving mobile scroll space can move the square stage in document
     // layout. Counter that layout shift in the canvas pan so the artwork's
@@ -124,7 +134,7 @@ export class CanvasManager {
       const centerShiftY = (after.top + after.height * 0.5) - (before.top + before.height * 0.5);
       if (Math.abs(centerShiftY) > 0.1) {
         this.viewPanY -= centerShiftY;
-        if (viewport) viewport.style.transform = `translate(${this.viewPanX}px, ${this.viewPanY}px) scale(${this.viewZoom}) rotate(${this.viewRotation}rad)`;
+        updateViewports();
       }
     }
   }
@@ -152,64 +162,90 @@ export class CanvasManager {
   containsPoint(point) { return Math.hypot(point.x - CENTER, point.y - CENTER) <= ART_RADIUS - 2; }
   containsWorkspacePoint(point) { return Math.hypot(point.x - CENTER, point.y - CENTER) <= SIZE / 2 - 10; }
 
-  renderBase(settings = DEFAULT_SETTINGS) {
+  renderBase(settings = DEFAULT_SETTINGS, { deferRender = false } = {}) {
     this.lastSettings = { ...this.lastSettings, ...settings };
     const ctx = this.baseCtx;
     ctx.clearRect(0, 0, SIZE, SIZE);
-    const paper = ctx.createLinearGradient(0, 0, SIZE, SIZE);
-    paper.addColorStop(0, "#f5f2e9"); paper.addColorStop(.55, "#eee9dd"); paper.addColorStop(1, "#e6e0d2");
-    ctx.fillStyle = paper; ctx.fillRect(0, 0, SIZE, SIZE);
-    this.drawPaperGrain(ctx);
+    // Do not paint the editor's square paper into the exported umbrella. The
+    // old full-canvas fill left a pale disc and a thin white halo outside the
+    // real cloth edge even when CSS clipped the viewport to a circle.
     ctx.save();
-    ctx.shadowColor = "rgba(38,63,58,.16)"; ctx.shadowBlur = 15;
-    ctx.fillStyle = "#fbf8ef"; ctx.beginPath(); ctx.arc(CENTER, CENTER, CANOPY_RADIUS - 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.arc(CENTER, CENTER, CANOPY_RADIUS - 5, 0, Math.PI * 2);
+    ctx.clip();
+    // The selected dye owns the hue. An ivory undercoat mixed with a partial
+    // tint made greens yellow and made neutral fabric look cream.
+    ctx.fillStyle = this.lastSettings.fabricColor || DEFAULT_SETTINGS.fabricColor;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    this.drawPaperGrain(ctx);
     ctx.restore();
+    // The photograph supplies fine cloth detail; its baked directional light
+    // must not turn adjacent panels into different dye colors.
+    ctx.save();
+    ctx.globalAlpha = .28;
+    ctx.globalCompositeOperation = "multiply";
     if (this.clothImage.complete && this.clothImage.naturalWidth) this.drawClothImage(ctx);
     else this.drawClothFallback(ctx);
-    this.applyFabricTint(ctx, this.lastSettings.fabricColor || DEFAULT_SETTINGS.fabricColor);
+    ctx.restore();
     this.drawPanelLight(ctx);
     this.drawSilkWeave(ctx, this.lastSettings.fabricMaterial || DEFAULT_SETTINGS.fabricMaterial);
+    // The editor shows the same light-transmitting cloth as the 3D viewer.
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-in";
+    const opacity = { georgette: .80, plainSilk: .91, denseSilk: .97 }[this.lastSettings.fabricMaterial] || .80;
+    ctx.fillStyle = `rgba(0,0,0,${opacity})`;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    this.applyGauzeWeave(ctx, this.lastSettings.fabricMaterial);
+    ctx.restore();
     this.renderReliefLayer();
     this.renderAtmosphereLayer();
     this.renderSilkSheenLayer();
     this.renderStructure();
-    this.renderScene();
-    this.markTextureDirty();
+    if (!deferRender) {
+      this.renderScene();
+      this.markTextureDirty();
+    }
   }
 
   drawClothImage(ctx) {
+    if (this.neutralClothSource !== this.clothImage || this.neutralClothSrc !== this.clothImage.currentSrc) {
+      const canvas = document.createElement("canvas");
+      canvas.width = this.clothImage.naturalWidth;
+      canvas.height = this.clothImage.naturalHeight;
+      const detail = canvas.getContext("2d", { willReadFrequently: true });
+      detail.drawImage(this.clothImage, 0, 0);
+      const image = detail.getImageData(0, 0, canvas.width, canvas.height);
+      for (let index = 0; index < image.data.length; index += 4) {
+        const luminance = Math.round(image.data[index] * .2126 + image.data[index + 1] * .7152 + image.data[index + 2] * .0722);
+        image.data[index] = image.data[index + 1] = image.data[index + 2] = luminance;
+      }
+      detail.putImageData(image, 0, 0);
+      this.neutralClothImage = canvas;
+      this.neutralClothSource = this.clothImage;
+      this.neutralClothSrc = this.clothImage.currentSrc;
+    }
     ctx.save(); ctx.beginPath(); ctx.arc(CENTER, CENTER, CANOPY_RADIUS - 5, 0, Math.PI * 2); ctx.clip();
     const diameter = CANOPY_RADIUS * 2;
-    ctx.drawImage(this.clothImage, CENTER - CANOPY_RADIUS, CENTER - CANOPY_RADIUS, diameter, diameter);
+    ctx.drawImage(this.neutralClothImage, CENTER - CANOPY_RADIUS, CENTER - CANOPY_RADIUS, diameter, diameter);
     ctx.restore();
-  }
-
-  applyFabricTint(ctx, color) {
-    if (!color) return;
-    ctx.save(); ctx.beginPath(); ctx.arc(CENTER, CENTER, CANOPY_RADIUS - 5, 0, Math.PI * 2); ctx.clip();
-    // Let the selected dye read through the pale silk base instead of leaving
-    // the canopy nearly white. The tint remains translucent, so the cloth's
-    // existing fold and panel detail is preserved.
-    ctx.globalCompositeOperation = "multiply"; ctx.globalAlpha = .97;
-    ctx.fillStyle = color; ctx.fillRect(0, 0, SIZE, SIZE); ctx.restore();
   }
 
   drawPaperGrain(ctx) {
     let seed = 7281;
     const random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-    ctx.save(); ctx.fillStyle = "rgba(67,78,66,.05)";
+    ctx.save(); ctx.fillStyle = "rgba(73,73,73,.05)";
     for (let index = 0; index < 650; index += 1) ctx.fillRect(random() * SIZE, random() * SIZE, .8, .8);
     ctx.restore();
   }
 
   drawClothFallback(ctx) {
     const cloth = ctx.createRadialGradient(CENTER - 95, CENTER - 120, 18, CENTER, CENTER, CANOPY_RADIUS);
-    cloth.addColorStop(0, "#fffdf8"); cloth.addColorStop(.72, "#f1eee5"); cloth.addColorStop(1, "#d8d0c0");
+    cloth.addColorStop(0, "#f9f9f9"); cloth.addColorStop(.72, "#efefef"); cloth.addColorStop(1, "#d0d0d0");
     ctx.save(); ctx.beginPath(); ctx.arc(CENTER, CENTER, CANOPY_RADIUS, 0, Math.PI * 2); ctx.fillStyle = cloth; ctx.fill();
     ctx.clip();
     for (let panel = 0; panel < RIB_COUNT; panel += 1) {
       const step = Math.PI * 2 / RIB_COUNT;
-      ctx.fillStyle = panel % 2 ? "rgba(83,124,126,.025)" : "rgba(255,255,255,.10)";
+      ctx.fillStyle = panel % 2 ? "rgba(105,105,105,.025)" : "rgba(255,255,255,.10)";
       ctx.beginPath(); ctx.moveTo(CENTER, CENTER); ctx.arc(CENTER, CENTER, CANOPY_RADIUS, -Math.PI / 2 + panel * step, -Math.PI / 2 + (panel + 1) * step); ctx.closePath(); ctx.fill();
     }
     ctx.restore();
@@ -221,16 +257,16 @@ export class CanvasManager {
       const angle = Math.PI * 2 / RIB_COUNT;
       ctx.beginPath(); ctx.moveTo(CENTER, CENTER);
       ctx.arc(CENTER, CENTER, CANOPY_RADIUS, -Math.PI / 2 + panel * angle, -Math.PI / 2 + (panel + 1) * angle);
-      ctx.closePath(); ctx.fillStyle = panel % 2 ? "rgba(76,91,72,.024)" : "rgba(255,255,255,.012)"; ctx.fill();
+      ctx.closePath(); ctx.fillStyle = panel % 2 ? "rgba(83,83,83,.024)" : "rgba(255,255,255,.012)"; ctx.fill();
     }
     ctx.restore();
   }
 
   drawSilkWeave(ctx, material = "georgette") {
     const profiles = {
-      georgette: { warp: 4.8, weft: 6.2, alpha: 0.066, tint: "77,101,91" },
-      plainSilk: { warp: 5.2, weft: 5.8, alpha: 0.07, tint: "91,91,79" },
-      denseSilk: { warp: 4.2, weft: 5.0, alpha: 0.076, tint: "65,84,78" }
+      georgette: { warp: 4.8, weft: 6.2, alpha: 0.095, tint: "92,92,92" },
+      plainSilk: { warp: 5.2, weft: 5.8, alpha: 0.07, tint: "87,87,87" },
+      denseSilk: { warp: 4.2, weft: 5.0, alpha: 0.076, tint: "78,78,78" }
     };
     const profile = profiles[material] || profiles.georgette;
     ctx.save(); ctx.beginPath(); ctx.arc(CENTER, CENTER, CANOPY_RADIUS - 8, 0, Math.PI * 2); ctx.clip();
@@ -245,6 +281,38 @@ export class CanvasManager {
     ctx.restore();
   }
 
+  applyGauzeWeave(ctx, material = "georgette") {
+    const strength = { georgette: 1, plainSilk: .3, denseSilk: 0 }[material] ?? 1;
+    if (!strength) return;
+    this.gauzeTiles ||= new Map();
+    let tile = this.gauzeTiles.get(material);
+    if (!tile) {
+      tile = document.createElement("canvas");
+      tile.width = tile.height = 128;
+      const fiber = tile.getContext("2d");
+      // Fine openings transmit a little more of the scene behind the silk;
+      // the original overall fabric opacity remains the starting point.
+      fiber.fillStyle = `rgba(0,0,0,${1 - .045 * strength})`;
+      fiber.fillRect(0, 0, 128, 128);
+      fiber.lineWidth = .8;
+      fiber.strokeStyle = "#000";
+      for (let offset = 0; offset < 128; offset += 4) {
+        fiber.beginPath();
+        fiber.moveTo(offset + .5, 0); fiber.lineTo(offset + .5, 128);
+        fiber.moveTo(0, offset + .5); fiber.lineTo(128, offset + .5);
+        fiber.stroke();
+      }
+      this.gauzeTiles.set(material, tile);
+    }
+    const pattern = ctx.createPattern(tile, "repeat");
+    if (!pattern) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-in";
+    ctx.fillStyle = pattern;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    ctx.restore();
+  }
+
   drawTextureSilkWeave(ctx, material = "georgette") {
     // A fine, translucent warp/weft tile keeps the 3D UV texture from turning
     // into a flat color field. It contains no radial ribs, so the actual model
@@ -254,42 +322,48 @@ export class CanvasManager {
       plainSilk: { spacingX: 6.9, spacingY: 7.7, alpha: 0.36, strand: 0.024 },
       denseSilk: { spacingX: 6.3, spacingY: 7.1, alpha: 0.39, strand: 0.027 }
     };
-    const profile = profiles[material] || profiles.georgette;
-    const tile = document.createElement("canvas");
-    tile.width = 128; tile.height = 128;
-    const fiber = tile.getContext("2d");
-    fiber.lineWidth = 0.34;
-    for (let y = 2; y < tile.height; y += profile.spacingY) {
-      fiber.beginPath();
-      for (let x = 0; x <= tile.width; x += 4) {
-        const waviness = Math.sin(x * 0.24 + y * 0.7) * 0.28 + Math.sin(x * 0.08 - y) * 0.12;
-        if (x === 0) fiber.moveTo(x, y + waviness);
-        else fiber.lineTo(x, y + waviness);
+    const style = Object.hasOwn(profiles, material) ? material : "georgette";
+    const profile = profiles[style];
+    this.textureWeaveTiles ||= new Map();
+    let tile = this.textureWeaveTiles.get(style);
+    if (!tile) {
+      tile = document.createElement("canvas");
+      tile.width = 128; tile.height = 128;
+      const fiber = tile.getContext("2d");
+      fiber.lineWidth = 0.34;
+      for (let y = 2; y < tile.height; y += profile.spacingY) {
+        fiber.beginPath();
+        for (let x = 0; x <= tile.width; x += 4) {
+          const waviness = Math.sin(x * 0.24 + y * 0.7) * 0.28 + Math.sin(x * 0.08 - y) * 0.12;
+          if (x === 0) fiber.moveTo(x, y + waviness);
+          else fiber.lineTo(x, y + waviness);
+        }
+      fiber.strokeStyle = `rgba(132,132,132,${profile.strand})`; fiber.stroke();
+        fiber.beginPath();
+        for (let x = 0; x <= tile.width; x += 4) {
+          const waviness = Math.sin(x * 0.24 + y * 0.7) * 0.28 + Math.sin(x * 0.08 - y) * 0.12;
+          if (x === 0) fiber.moveTo(x, y + 0.58 + waviness);
+          else fiber.lineTo(x, y + 0.58 + waviness);
+        }
+        fiber.strokeStyle = "rgba(255,255,255,.045)"; fiber.stroke();
       }
-      fiber.strokeStyle = `rgba(139,132,116,${profile.strand})`; fiber.stroke();
-      fiber.beginPath();
-      for (let x = 0; x <= tile.width; x += 4) {
-        const waviness = Math.sin(x * 0.24 + y * 0.7) * 0.28 + Math.sin(x * 0.08 - y) * 0.12;
-        if (x === 0) fiber.moveTo(x, y + 0.58 + waviness);
-        else fiber.lineTo(x, y + 0.58 + waviness);
+      for (let x = 3; x < tile.width; x += profile.spacingX) {
+        fiber.beginPath();
+        for (let y = 0; y <= tile.height; y += 4) {
+          const waviness = Math.sin(y * 0.22 + x * 0.6) * 0.26 + Math.sin(y * 0.07 - x) * 0.12;
+          if (y === 0) fiber.moveTo(x + waviness, y);
+          else fiber.lineTo(x + waviness, y);
+        }
+        fiber.strokeStyle = `rgba(132,132,132,${profile.strand * 0.82})`; fiber.stroke();
+        fiber.beginPath();
+        for (let y = 0; y <= tile.height; y += 4) {
+          const waviness = Math.sin(y * 0.22 + x * 0.6) * 0.26 + Math.sin(y * 0.07 - x) * 0.12;
+          if (y === 0) fiber.moveTo(x + 0.58 + waviness, y);
+          else fiber.lineTo(x + 0.58 + waviness, y);
+        }
+        fiber.strokeStyle = "rgba(255,255,255,.04)"; fiber.stroke();
       }
-      fiber.strokeStyle = "rgba(255,252,238,.045)"; fiber.stroke();
-    }
-    for (let x = 3; x < tile.width; x += profile.spacingX) {
-      fiber.beginPath();
-      for (let y = 0; y <= tile.height; y += 4) {
-        const waviness = Math.sin(y * 0.22 + x * 0.6) * 0.26 + Math.sin(y * 0.07 - x) * 0.12;
-        if (y === 0) fiber.moveTo(x + waviness, y);
-        else fiber.lineTo(x + waviness, y);
-      }
-      fiber.strokeStyle = `rgba(139,132,116,${profile.strand * 0.82})`; fiber.stroke();
-      fiber.beginPath();
-      for (let y = 0; y <= tile.height; y += 4) {
-        const waviness = Math.sin(y * 0.22 + x * 0.6) * 0.26 + Math.sin(y * 0.07 - x) * 0.12;
-        if (y === 0) fiber.moveTo(x + 0.58 + waviness, y);
-        else fiber.lineTo(x + 0.58 + waviness, y);
-      }
-      fiber.strokeStyle = "rgba(255,252,238,.04)"; fiber.stroke();
+      this.textureWeaveTiles.set(style, tile);
     }
     const pattern = ctx.createPattern(tile, "repeat");
     if (!pattern) return;
@@ -356,16 +430,17 @@ export class CanvasManager {
 
     // 宽而柔的斜向反光叠在最上层，不形成硬边或霓虹光圈。
     const sheen = ctx.createLinearGradient(145, 120, 580, 565);
-    sheen.addColorStop(0, "rgba(255,255,246,0)");
-    sheen.addColorStop(.31, "rgba(255,255,246,.006)");
-    sheen.addColorStop(.43, "rgba(255,255,246,.016)");
-    sheen.addColorStop(.49, "rgba(255,255,246,.008)");
-    sheen.addColorStop(.66, "rgba(255,255,246,.003)");
-    sheen.addColorStop(1, "rgba(255,255,246,0)");
+    sheen.addColorStop(0, "rgba(255,255,255,0)");
+    const finish = { georgette: .016, plainSilk: .11, denseSilk: .18 }[this.lastSettings.fabricMaterial] || .016;
+    sheen.addColorStop(.31, `rgba(255,255,255,${finish * .3})`);
+    sheen.addColorStop(.43, `rgba(255,255,255,${finish})`);
+    sheen.addColorStop(.49, `rgba(255,255,255,${finish * .55})`);
+    sheen.addColorStop(.66, "rgba(255,255,255,.003)");
+    sheen.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = sheen; ctx.fillRect(0, 0, SIZE, SIZE);
 
     // 少量纤维高光沿伞骨方向延伸，提示扇面张开的弧度。
-    ctx.lineWidth = .35; ctx.strokeStyle = "rgba(255,252,238,.022)";
+    ctx.lineWidth = .35; ctx.strokeStyle = "rgba(255,255,255,.022)";
     for (let rib = 1; rib < RIB_COUNT; rib += 3) {
       const angle = -Math.PI / 2 + rib * Math.PI * 2 / RIB_COUNT;
       const startX = CENTER + Math.cos(angle) * 26, startY = CENTER + Math.sin(angle) * 26;
@@ -446,8 +521,12 @@ export class CanvasManager {
     this.ctx.drawImage(this.baseLayer, 0, 0, SIZE, SIZE);
     this.ctx.drawImage(this.artLayer, 0, 0, SIZE, SIZE);
     this.preparePatternSurface();
-    this.ctx.save(); this.ctx.globalCompositeOperation = "multiply"; this.ctx.globalAlpha = .88;
+    this.ctx.save(); this.ctx.globalAlpha = .9;
     this.ctx.drawImage(this.patternSurfaceLayer, 0, 0, SIZE, SIZE); this.ctx.restore();
+    this.ctx.save(); this.ctx.globalAlpha = .48;
+    this.ctx.globalCompositeOperation = "source-atop";
+    this.drawSilkWeave(this.ctx, this.lastSettings.fabricMaterial || DEFAULT_SETTINGS.fabricMaterial);
+    this.ctx.restore();
     this.ctx.save(); this.ctx.globalCompositeOperation = "multiply"; this.ctx.globalAlpha = .5;
     this.ctx.drawImage(this.reliefLayer, 0, 0, SIZE, SIZE);
     this.ctx.globalAlpha = .56; this.ctx.drawImage(this.atmosphereLayer, 0, 0, SIZE, SIZE); this.ctx.restore();
@@ -488,10 +567,12 @@ export class CanvasManager {
     );
     drawArtworkLayer(this.artLayer);
     context.save();
-    context.globalCompositeOperation = "multiply";
-    context.globalAlpha = 0.94;
+    context.globalAlpha = 0.90;
     drawArtworkLayer(this.patternLayer);
     context.restore();
+    // The fiber passes over pigment as well as untouched silk. Keeping the
+    // pigment in source-over mode also preserves white painted petals.
+    this.drawTextureSilkWeave(context, this.lastSettings.fabricMaterial || DEFAULT_SETTINGS.fabricMaterial);
     context.restore();
     this.textureDirty = false;
     this.textureVersion += 1;
@@ -504,6 +585,10 @@ export class CanvasManager {
     // subtle unevenness while keeping the rim free of a vignette.
     const size = 192;
     const base = this.lastSettings.fabricColor || DEFAULT_SETTINGS.fabricColor;
+    if (this.textureDyeColor === base && this.textureDyeCanvas) {
+      context.drawImage(this.textureDyeCanvas, 0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+      return;
+    }
     const baseRgb = [1, 3, 5].map((offset) => Number.parseInt(base.slice(offset, offset + 2), 16));
     let seed = 43127;
     const random = () => {
@@ -533,20 +618,20 @@ export class CanvasManager {
         const medium = sample(grids[1], u, v);
         const fine = sample(grids[2], u, v);
         const variation = (coarse - 0.5) * 0.66 + (medium - 0.5) * 0.27 + (fine - 0.5) * 0.07;
-        // A more visible, very broad dye variation prevents large areas from
-        // reading as bleached white in the 3D view. Keep it continuous and
-        // chromatic; do not add a dark rim or circular stain pattern.
-        const brightness = 1 + variation * 0.3;
+        // A trace of uneven dye keeps the fabric alive without cloudy patches
+        // or large changes in hue between adjacent parts of the canopy.
+        const brightness = 1 + variation * 0.06;
         const index = (y * size + x) * 4;
-        image.data[index] = Math.max(0, Math.min(255, Math.round(baseRgb[0] * brightness - variation * 2.2)));
-        image.data[index + 1] = Math.max(0, Math.min(255, Math.round(baseRgb[1] * brightness + variation * 3.4)));
-        image.data[index + 2] = Math.max(0, Math.min(255, Math.round(baseRgb[2] * brightness + variation * 4.4)));
+        image.data[index] = Math.max(0, Math.min(255, Math.round(baseRgb[0] * brightness)));
+        image.data[index + 1] = Math.max(0, Math.min(255, Math.round(baseRgb[1] * brightness)));
+        image.data[index + 2] = Math.max(0, Math.min(255, Math.round(baseRgb[2] * brightness)));
         image.data[index + 3] = 255;
       }
     }
-    const dye = document.createElement("canvas");
+    const dye = this.textureDyeCanvas ||= document.createElement("canvas");
     dye.width = size; dye.height = size;
     dye.getContext("2d").putImageData(image, 0, 0);
+    this.textureDyeColor = base;
     context.drawImage(dye, 0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
   }
 
@@ -558,12 +643,15 @@ export class CanvasManager {
     if (options.includeStructure !== false) layerNames.push("structureLayer");
     layerNames.forEach((name) => {
       context.save();
-      if (name === "patternSurfaceLayer") { context.globalCompositeOperation = "multiply"; context.globalAlpha = .88; }
+      if (name === "patternSurfaceLayer") { context.globalAlpha = .9; }
       if (name === "reliefLayer") { context.globalCompositeOperation = "multiply"; context.globalAlpha = .34; }
       if (name === "atmosphereLayer") { context.globalCompositeOperation = "multiply"; context.globalAlpha = .34; }
       if (name === "sheenLayer") { context.globalCompositeOperation = "screen"; context.globalAlpha = .22; }
       context.drawImage(this[name], 0, 0, SIZE, SIZE); context.restore();
     });
+    context.save(); context.globalAlpha = .48;
+    this.drawSilkWeave(context, this.lastSettings.fabricMaterial || DEFAULT_SETTINGS.fabricMaterial);
+    context.restore();
     if (options.includeFluid !== false && this.fluidSnapshotCanvas) {
       context.save();
       context.beginPath(); context.arc(CENTER, CENTER, CANOPY_RADIUS - 2, 0, Math.PI * 2); context.clip();

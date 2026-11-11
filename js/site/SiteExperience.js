@@ -1,6 +1,6 @@
-import { ArtworkGalleryStore } from "../features/ArtworkGalleryStore.js?v=20261101-silk-craft-v3";
-import { GalleryScene } from "./GalleryScene.js?v=20261030-hanging-gallery-v1";
-import { NavigationInk } from "./NavigationInk.js?v=20261030-hanging-gallery-v1";
+import { ArtworkGalleryStore } from "../features/ArtworkGalleryStore.js?v=20261111-gallery-color-v5";
+import { HangingGallery3D } from "./HangingGallery3D.js?v=20261111-lantern-default-v1";
+import { NavigationInk } from "./NavigationInk.js?v=20261106-ink-font-v1";
 
 const ROUTES = new Set(["home", "heritage", "studio", "gallery"]);
 
@@ -15,22 +15,15 @@ export class SiteExperience {
     this.transitioning = false;
     this.scrollX = 0;
     this.galleryWorks = [];
-    this.curatedWorks = [];
     this.imageCache = new Map();
     this.galleryPreviewCache = new Map();
     this.galleryPreparationToken = 0;
     this.galleryFocusRequestToken = 0;
     this.hangingGalleryMode = false;
-    this.hangingGalleryDefaultsChosen = false;
-    this.hangingDayNightInterval = 0;
-    this.hangingRopeAnimationFrame = 0;
-    this.hangingRopePhase = 0;
-    this.hangingRopeWind = 0;
-    this.hangingRopeWindTarget = 0;
-    this.hangingRopeLastTime = 0;
-    this.hangingSelectedIds = new Set();
-    this.hangingDismissedIds = new Set();
     this.hangingPreparedWorks = [];
+    this.hangingCards = new Map();
+    this.hangingFocusId = null;
+    this.lastHangingRailSelection = null;
     this.featuredWork = null;
     this.homeWorkId = null;
     this.homeIntroPlayed = false;
@@ -46,19 +39,36 @@ export class SiteExperience {
         : this.page === "gallery" && !document.getElementById("galleryFocus").hidden;
       host.addEventListener("pointerenter", () => {
         if (isCurrentShowcase() && this.app.threePreview?.controls) {
-          this.app.threePreview.controls.autoRotateSpeed = id === "homeUmbrellaHost" ? 0.16 : 0.65;
+          this.app.threePreview.controls.autoRotateSpeed = id === "homeUmbrellaHost" ? 0.2 : 0.65;
         }
       });
       host.addEventListener("pointerleave", () => {
         if (isCurrentShowcase() && this.app.threePreview?.controls) {
-          this.app.threePreview.controls.autoRotateSpeed = id === "homeUmbrellaHost" ? 0.42 : 2;
+          this.app.threePreview.controls.autoRotateSpeed = id === "homeUmbrellaHost" ? 0.44 : 2;
         }
       });
     });
-    window.addEventListener("gallery:updated", () => this.refreshGallery());
+    window.addEventListener("gallery:updated", (event) => {
+      const savedWork = event.detail;
+      if (savedWork?.id) {
+        this.store.select(savedWork.id);
+        this.hangingFocusId = savedWork.id;
+      }
+      void (async () => {
+        if (this.page !== "gallery") {
+          await this.navigate("gallery");
+          if (this.page !== "gallery") {
+            history.pushState(null, "", "#gallery");
+            this.showPage("gallery", false);
+          }
+        } else this.openHangingGallery();
+        this.hangingFocusId = savedWork?.id || this.hangingFocusId;
+        this.renderHangingGallery();
+        requestAnimationFrame(() => this.hangingCards.get(this.hangingFocusId)?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" }));
+      })();
+    });
     this.app.ready.then(() => {
       this.featuredWork ||= this.store.createFeatured(this.app.canvasManager.getUmbrellaTextureCanvas());
-      this.curatedWorks = this.store.createCuratedExhibitionWorks(this.app.patternDrawer);
       if (this.page === "gallery") this.refreshGallery();
     }).catch((error) => console.warn("作品工坊初始化失败：", error));
     window.addEventListener("popstate", () => this.showPage(this.routeFromHash(), false));
@@ -107,7 +117,6 @@ export class SiteExperience {
   bindNavigation() {
     const heritageNav = document.querySelector(".heritage-page-nav:not(.studio-floating-nav)");
     const studioNav = document.querySelector(".studio-floating-nav");
-    const galleryNav = document.querySelector(".gallery-floating-nav");
     const hangingNav = document.querySelector(".hanging-gallery-nav");
     try {
       this.navigationInk = new NavigationInk(heritageNav);
@@ -120,12 +129,6 @@ export class SiteExperience {
     } catch (error) {
       console.warn("绘制工坊导航水墨暂不可用：", error);
       this.studioNavigationInk = null;
-    }
-    try {
-      this.galleryNavigationInk = new NavigationInk(galleryNav);
-    } catch (error) {
-      console.warn("画廊导航水墨暂不可用：", error);
-      this.galleryNavigationInk = null;
     }
     try {
       this.hangingNavigationInk = new NavigationInk(hangingNav);
@@ -151,7 +154,7 @@ export class SiteExperience {
         const navigationInk = sourceLink.closest(".studio-floating-nav")
           ? this.studioNavigationInk
           : sourceLink.closest(".hanging-gallery-nav") ? this.hangingNavigationInk
-            : sourceLink.closest(".gallery-floating-nav") ? this.galleryNavigationInk : this.navigationInk;
+            : this.navigationInk;
         await navigationInk?.burst(sourceLink);
       }
       if (!this.transition) {
@@ -174,8 +177,6 @@ export class SiteExperience {
     document.documentElement.dataset.sitePage = route;
     this.homeLakeScene?.setActive(route === "home");
     this.homeLakeScene?.setSceneMode(route === "home" ? "home" : "off");
-    this.galleryScene?.setActive(route === "gallery" && !this.hangingGalleryMode);
-    if (route !== "gallery") this.closeGalleryWorksPanel?.();
     const pageByRoute = {
       home: "homePage",
       heritage: "heritagePage",
@@ -189,9 +190,8 @@ export class SiteExperience {
     this.navigationInk?.setVisible(route === "heritage");
     this.studioNavigationInk?.setActive(route);
     this.studioNavigationInk?.setVisible(route === "studio");
-    this.galleryNavigationInk?.setActive(route);
-    this.galleryNavigationInk?.setVisible(route === "gallery");
-    this.hangingNavigationInk?.setVisible(route === "gallery" && this.hangingGalleryMode);
+    this.hangingNavigationInk?.setActive(route);
+    this.hangingNavigationInk?.setVisible(route === "gallery");
     if (route !== "gallery") this.closeHangingGallery();
     if (route !== "studio") this.app.suspendShowcase();
     if (route === "home") {
@@ -209,7 +209,9 @@ export class SiteExperience {
       requestAnimationFrame(() => this.app.resumeStudioPresentation());
     } else {
       this.inkWashBackground?.setSceneMode(route);
-      if (route === "gallery") this.refreshGallery();
+      if (route === "gallery") {
+        this.openHangingGallery();
+      }
     }
     if (previous === "gallery" && route !== "gallery") this.closeGalleryFocus(false, true);
   }
@@ -463,7 +465,16 @@ export class SiteExperience {
     await this.app.ready;
     this.featuredWork ||= this.store.createFeatured(this.app.canvasManager.getUmbrellaTextureCanvas());
     const saved = this.store.list();
-    const choices = [this.featuredWork, ...saved];
+    const selectedId = this.store.getSelectedWorkId();
+    const selected = saved.find((work) => work.id === selectedId);
+    if (selected) {
+      this.homeWorkId = selected.id;
+      return { ...selected, fabricMaterial: selected.fabricMaterial || this.app.controls.getSettings().fabricMaterial || "georgette" };
+    }
+    const fallbackMaterial = this.app.controls.getSettings().fabricMaterial || "georgette";
+    const choices = saved.length
+      ? saved.map((work) => ({ ...work, fabricMaterial: work.fabricMaterial || fallbackMaterial }))
+      : [this.featuredWork];
     if (!this.homeWorkId || !choices.some((work) => work.id === this.homeWorkId)) {
       const choice = choices[Math.floor(Math.random() * choices.length)];
       this.homeWorkId = choice.id;
@@ -476,7 +487,13 @@ export class SiteExperience {
       const work = await this.getFeaturedWork();
       const canvas = await this.getCanvas(work);
       if (this.page !== "home") return;
-      const preview = await this.app.presentShowcase(document.getElementById("homeUmbrellaHost"), canvas, `home-${work.id}`);
+      const preview = await this.app.presentShowcase(
+        document.getElementById("homeUmbrellaHost"),
+        canvas,
+        `home-${work.id}`,
+        null,
+        work.fabricMaterial || this.app.controls.getSettings().fabricMaterial || "georgette"
+      );
       if (preview) {
         const hitTest = (clientX, clientY) => preview.hitTestClientPoint(clientX, clientY);
         preview.setBackgroundPointerHandler((event) => this.homeLakeScene?.handlePointerDown(event));
@@ -505,41 +522,27 @@ export class SiteExperience {
   }
 
   bindGallery() {
-    this.galleryScene = new GalleryScene(document.getElementById("gallerySceneHost"), (work, origin) => this.openGalleryFocus(work, origin));
-    const panel = document.getElementById("galleryWorksPanel");
-    const toggle = document.getElementById("galleryWorksToggle");
-    const close = () => {
-      panel.hidden = true;
-      toggle.setAttribute("aria-expanded", "false");
-      document.getElementById("galleryPage").classList.remove("has-works-panel");
-    };
-    this.closeGalleryWorksPanel = close;
-    toggle.addEventListener("click", () => {
-      if (!document.getElementById("galleryFocus").hidden) return;
-      const opening = panel.hidden;
-      panel.hidden = !opening;
-      toggle.setAttribute("aria-expanded", String(opening));
-      document.getElementById("galleryPage").classList.toggle("has-works-panel", opening);
-      if (opening) this.renderGalleryWorksPanel();
-    });
-    document.getElementById("galleryWorksClose").addEventListener("click", close);
-    toggle.addEventListener("click", () => { void this.galleryNavigationInk?.burst(toggle); });
-    document.querySelectorAll("[data-gallery-filter]").forEach((button) => button.addEventListener("click", () => {
-      document.querySelectorAll("[data-gallery-filter]").forEach((item) => item.classList.toggle("is-active", item === button));
-      this.renderGalleryWorksPanel();
-    }));
-    document.getElementById("galleryFocusClose").addEventListener("click", () => this.closeGalleryFocus());
+    const focus = document.getElementById("galleryFocus");
+    const focusHost = document.getElementById("galleryFocusHost");
+    let focusGesture = null;
+    focus.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      focusGesture = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    }, true);
+    focus.addEventListener("pointerup", (event) => {
+      if (!focusGesture || event.pointerId !== focusGesture.pointerId) return;
+      const gesture = focusGesture;
+      focusGesture = null;
+      if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 8) return;
+      const hitCanvas = focusHost.contains(event.target);
+      const hitUmbrella = hitCanvas && this.app.threePreview?.hitTestClientPoint(event.clientX, event.clientY);
+      if (!hitUmbrella) this.closeGalleryFocus();
+    }, true);
+    focus.addEventListener("pointercancel", () => { focusGesture = null; }, true);
 
     const hangingGallery = document.getElementById("hangingGallery");
-    const hangingStage = document.getElementById("hangingGalleryStage");
-    const openHanging = document.getElementById("galleryHangingOpen");
-    openHanging.addEventListener("click", async () => {
-      await this.galleryNavigationInk?.burst(openHanging);
-      this.openHangingGallery();
-    });
-    hangingGallery.querySelector('[data-gallery-mode="classic"]').addEventListener("click", async (event) => {
-      await this.hangingNavigationInk?.burst(event.currentTarget);
-      this.closeHangingGallery();
+    document.getElementById("hangingGalleryCreate").addEventListener("click", () => {
+      void this.navigate("studio", document.querySelector('.hanging-gallery-nav [data-route="studio"]'));
     });
     document.getElementById("hangingGalleryPrev").addEventListener("click", () => this.scrollHangingGallery(-1));
     document.getElementById("hangingGalleryNext").addEventListener("click", () => this.scrollHangingGallery(1));
@@ -549,509 +552,257 @@ export class SiteExperience {
         this.scrollHangingGallery(event.key === "ArrowLeft" ? -1 : 1);
       }
     });
-    this.hangingWindPointer = null;
-    this.hangingWindResetTimer = 0;
-    this.renderHangingWalkers();
-    window.addEventListener("resize", () => {
-      if (this.hangingGalleryMode) this.positionHangingGalleryParasols();
-    }, { passive: true });
-    hangingStage.addEventListener("pointermove", (event) => this.applyHangingWind(event), { passive: true });
-    hangingStage.addEventListener("pointerleave", () => this.releaseHangingWind(), { passive: true });
+    hangingGallery.querySelectorAll("[data-hanging-weather]").forEach((button) => button.addEventListener("click", () => {
+      this.hangingWorld?.setWeather(button.dataset.hangingWeather);
+    }));
+    hangingGallery.querySelectorAll("[data-hanging-time]").forEach((button) => button.addEventListener("click", () => {
+      this.hangingWorld?.setTimeOfDay(button.dataset.hangingTime);
+    }));
     document.addEventListener("visibilitychange", () => {
-      if (this.hangingGalleryMode && !document.hidden) this.startHangingRopeMotion();
-    });
-    window.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && this.hangingGalleryMode && document.getElementById("galleryFocus").hidden) this.closeHangingGallery();
+      this.hangingWorld?.setActive(this.hangingGalleryMode && !document.hidden);
     });
   }
 
   openHangingGallery() {
     if (this.page !== "gallery") return;
-    this.closeGalleryWorksPanel?.();
     this.hangingGalleryMode = true;
-    document.getElementById("galleryClassicView").hidden = true;
-    document.getElementById("hangingGallery").hidden = false;
     document.getElementById("galleryPage").classList.add("is-hanging-gallery");
-    this.startHangingDayNightCycle();
-    this.startHangingRopeMotion();
-    this.galleryScene?.setActive(false);
-    this.galleryNavigationInk?.setVisible(false);
+    if (!this.hangingWorld) {
+      try {
+        this.hangingWorld = new HangingGallery3D(
+          document.getElementById("hangingGallery3D"),
+          (work, origin) => {
+            if (work?.id) {
+              this.store.select(work.id);
+              this.hangingFocusId = work.id;
+              this.renderHangingGallery();
+            }
+            this.openGalleryFocus(work, origin);
+          },
+          {
+            onWeatherChange: (name) => document.querySelectorAll("[data-hanging-weather]").forEach((button) => {
+              button.setAttribute("aria-pressed", String(button.dataset.hangingWeather === name));
+            }),
+            onTimeChange: (name) => document.querySelectorAll("[data-hanging-time]").forEach((button) => {
+              button.setAttribute("aria-pressed", String(button.dataset.hangingTime === name));
+            })
+          }
+        );
+        this.hangingWorld.ready.catch(() => {});
+      } catch (error) {
+        console.error("无法启动三维悬伞街景：", error);
+        document.querySelector("#hangingGallery3D .hanging-gallery-loading").textContent = "三维街景启动失败，请检查浏览器的 WebGL 支持。";
+      }
+    }
+    this.hangingWorld?.setActive(true);
     this.hangingNavigationInk?.setVisible(true);
-    if (!this.hangingPreparedWorks.length) this.refreshGallery();
-    else this.renderHangingGallery();
+    if (!this.app.isReady) return;
+    this.refreshGallery();
   }
 
   closeHangingGallery() {
     if (!this.hangingGalleryMode && document.getElementById("hangingGallery")?.hidden !== false) return;
     this.hangingGalleryMode = false;
-    this.stopHangingDayNightCycle();
-    this.stopHangingRopeMotion();
-    this.releaseHangingWind();
+    this.hangingWorld?.setActive(false);
     const page = document.getElementById("galleryPage");
     page?.classList.remove("is-hanging-gallery");
-    const hanging = document.getElementById("hangingGallery");
-    const classic = document.getElementById("galleryClassicView");
-    if (hanging) hanging.hidden = true;
-    if (classic) classic.hidden = false;
-    this.galleryScene?.setActive(this.page === "gallery");
     this.hangingNavigationInk?.setVisible(false);
-    this.galleryNavigationInk?.setVisible(this.page === "gallery");
   }
 
   scrollHangingGallery(direction) {
     const track = document.getElementById("hangingGalleryTrack");
     if (!track) return;
-    track.scrollBy({ left: direction * Math.max(track.clientWidth * .72, 260), behavior: "smooth" });
-  }
-
-  startHangingDayNightCycle() {
-    this.stopHangingDayNightCycle();
-    const gallery = document.getElementById("hangingGallery");
-    if (!gallery) return;
-    gallery.dataset.time = "day";
-    this.hangingDayNightInterval = window.setInterval(() => {
-      if (!this.hangingGalleryMode || gallery.hidden) return;
-      gallery.dataset.time = gallery.dataset.time === "night" ? "day" : "night";
-    }, 30000);
-  }
-
-  stopHangingDayNightCycle() {
-    window.clearInterval(this.hangingDayNightInterval);
-    this.hangingDayNightInterval = 0;
-    const gallery = document.getElementById("hangingGallery");
-    if (gallery) gallery.dataset.time = "day";
-  }
-
-  startHangingRopeMotion() {
-    this.stopHangingRopeMotion();
-    if (!this.hangingGalleryMode) return;
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reducedMotion) {
-      this.positionHangingGalleryParasols(34);
-      return;
-    }
-    const tick = (now) => {
-      if (!this.hangingGalleryMode || document.hidden) {
-        this.hangingRopeAnimationFrame = 0;
-        this.hangingRopeLastTime = 0;
-        return;
-      }
-      const delta = this.hangingRopeLastTime ? Math.min(48, now - this.hangingRopeLastTime) : 16;
-      this.hangingRopeLastTime = now;
-      this.hangingRopePhase += delta * .00042;
-      const easing = 1 - Math.exp(-delta / 430);
-      this.hangingRopeWind += (this.hangingRopeWindTarget - this.hangingRopeWind) * easing;
-      this.hangingRopeWindTarget *= Math.exp(-delta / 760);
-      const centerSag = 34 + Math.sin(this.hangingRopePhase) * 1.15 + this.hangingRopeWind * .72;
-      this.positionHangingGalleryParasols(centerSag);
-      this.hangingRopeAnimationFrame = requestAnimationFrame(tick);
-    };
-    this.hangingRopeAnimationFrame = requestAnimationFrame(tick);
-  }
-
-  stopHangingRopeMotion() {
-    cancelAnimationFrame(this.hangingRopeAnimationFrame);
-    this.hangingRopeAnimationFrame = 0;
-    this.hangingRopeLastTime = 0;
-    this.hangingRopeWind = 0;
-    this.hangingRopeWindTarget = 0;
-  }
-
-  renderHangingWalkers() {
-    const host = document.getElementById("hangingGalleryWalkers");
-    if (!host || host.childElementCount) return;
-    const walkers = [
-      { type: "woman", row: "0%", direction: "right", duration: "58s", delay: "-17s", width: "clamp(6.1rem, 6.8vw, 8rem)", opacity: ".84", start: "19.25%", middle: "26.05%", end: "18.325%", scaleStart: ".84", scaleMiddle: ".68", scaleEnd: ".82", depth: 3, step: "1.22s" },
-      { type: "man", row: "100%", direction: "left", duration: "67s", delay: "-39s", width: "clamp(5.7rem, 6.3vw, 7.5rem)", opacity: ".8", start: "20.225%", middle: "24.35%", end: "18.325%", scaleStart: ".77", scaleMiddle: ".62", scaleEnd: ".76", depth: 2, step: "1.38s" },
-      { type: "woman", row: "0%", direction: "left", duration: "63s", delay: "-23s", width: "clamp(5rem, 5.5vw, 6.5rem)", opacity: ".72", start: "20.45%", middle: "26.9%", end: "19.9%", scaleStart: ".67", scaleMiddle: ".54", scaleEnd: ".65", depth: 1, step: "1.56s" },
-      { type: "man", row: "100%", direction: "right", duration: "74s", delay: "-51s", width: "clamp(5.3rem, 5.9vw, 7rem)", opacity: ".76", start: "18.325%", middle: "25.3%", end: "20.225%", scaleStart: ".74", scaleMiddle: ".59", scaleEnd: ".72", depth: 2, step: "1.46s" }
-    ];
-    walkers.forEach((config, index) => {
-      const walker = document.createElement("span");
-      walker.className = `hanging-gallery-walker is-${config.direction}`;
-      walker.style.setProperty("--walker-duration", config.duration);
-      walker.style.setProperty("--walker-delay", config.delay);
-      walker.style.setProperty("--walker-width", config.width);
-      walker.style.setProperty("--walker-opacity", config.opacity);
-      walker.style.setProperty("--walker-bottom-start", config.start);
-      walker.style.setProperty("--walker-bottom-middle", config.middle);
-      walker.style.setProperty("--walker-bottom-end", config.end);
-      walker.style.setProperty("--walker-scale-start", config.scaleStart);
-      walker.style.setProperty("--walker-scale-middle", config.scaleMiddle);
-      walker.style.setProperty("--walker-scale-end", config.scaleEnd);
-      // Keep walking figures only slightly in front of the room plate. A large
-      // z gap made the sprite look like a separate cutout layer.
-      walker.style.setProperty("--walker-z", `${-10 + (config.depth - 1) * 8}px`);
-      walker.style.setProperty("--walker-shadow-strength", config.scaleStart);
-      walker.style.zIndex = String(config.depth);
-      walker.setAttribute("data-figure", config.type);
-      const sprite = document.createElement("span");
-      sprite.className = "hanging-gallery-walker-sprite";
-      sprite.style.setProperty("--sprite-row", config.row);
-      sprite.style.setProperty("--step-duration", config.step);
-      walker.append(sprite);
-      host.append(walker);
-    });
-  }
-
-  positionHangingGalleryParasols(centerSag = 34) {
-    const suspension = document.getElementById("hangingGallerySuspension");
-    const rope = suspension?.querySelector(".hanging-gallery-rope");
-    if (!suspension || !rope || !suspension.getClientRects().length) return;
-    const suspensionBounds = suspension.getBoundingClientRect();
-    const ropeBounds = rope.getBoundingClientRect();
-    const hangers = [...suspension.querySelectorAll(".hanging-parasol-hanger")];
-    hangers.forEach((hanger, index) => {
-      const t = Number(hanger.dataset.ropeT) || (index + 1) / (hangers.length + 1);
-      const mirroredT = t <= .5 ? t : 1 - t;
-      const targetX = 1 + 98 * mirroredT;
-      let low = 0;
-      let high = 1;
-      for (let iteration = 0; iteration < 24; iteration += 1) {
-        const u = (low + high) / 2;
-        const inverse = 1 - u;
-        const x = inverse ** 3 + 3 * inverse ** 2 * u * 27 + 3 * inverse * u ** 2 * 37 + u ** 3 * 50;
-        if (x < targetX) low = u;
-        else high = u;
-      }
-      const u = (low + high) / 2;
-      const inverse = 1 - u;
-      const cubicY = (controlY) => inverse ** 3 * 2 + 3 * inverse ** 2 * u * 2 + 3 * inverse * u ** 2 * controlY + u ** 3 * controlY;
-      const baseSag = Math.max(0, (cubicY(centerSag) - 2) / 40 * ropeBounds.height);
-      hanger.style.left = `${ropeBounds.left - suspensionBounds.left + ropeBounds.width * t}px`;
-      hanger.style.setProperty("--rope-sag", `${baseSag.toFixed(2)}px`);
-    });
-    const ropePaths = rope.querySelectorAll("path");
-    const curve = (start, control) => `M1 ${start} C27 ${start} 37 ${control} 50 ${control} C63 ${control} 73 ${start} 99 ${start}`;
-    ropePaths[0]?.setAttribute("d", curve(4, centerSag + 2));
-    ropePaths[1]?.setAttribute("d", curve(2, centerSag));
-    ropePaths[2]?.setAttribute("d", curve(1, centerSag - 1));
-  }
-
-  applyHangingWind(event) {
-    if (!this.hangingGalleryMode || event.pointerType === "touch") return;
-    const now = performance.now();
-    const previous = this.hangingWindPointer;
-    this.hangingWindPointer = { x: event.clientX, y: event.clientY, time: now };
-    if (!previous) return;
-    const elapsed = Math.max(8, now - previous.time);
-    const velocityX = (event.clientX - previous.x) / elapsed;
-    const velocityY = (event.clientY - previous.y) / elapsed;
-    this.hangingRopeWindTarget = Math.max(-1.8, Math.min(1.8, velocityX * 2.5 + velocityY * .55));
-    const root = document.getElementById("hangingGalleryStage");
-    root.querySelectorAll(".hanging-parasol-hanger").forEach((hanger) => {
-      const factor = Number(hanger.dataset.gustFactor) || .7;
-      const sway = Math.max(-5.2, Math.min(5.2, velocityX * 88 * factor + velocityY * 18 * factor));
-      hanger.style.setProperty("--gust-angle", `${sway.toFixed(2)}deg`);
-    });
-    window.clearTimeout(this.hangingWindResetTimer);
-    this.hangingWindResetTimer = window.setTimeout(() => this.releaseHangingWind(), 180);
-  }
-
-  releaseHangingWind() {
-    window.clearTimeout(this.hangingWindResetTimer);
-    this.hangingWindResetTimer = 0;
-    this.hangingWindPointer = null;
-    this.hangingRopeWindTarget = 0;
-    const root = document.getElementById("hangingGalleryStage");
-    if (!root) return;
-    root.querySelectorAll(".hanging-parasol-hanger").forEach((hanger) => hanger.style.setProperty("--gust-angle", "0deg"));
+    const cards = [...track.querySelectorAll(".hanging-gallery-card")];
+    if (!cards.length) return;
+    const selectedIndex = cards.findIndex((card) => card.classList.contains("is-selected"));
+    const startIndex = selectedIndex < 0 ? (direction < 0 ? cards.length : -1) : selectedIndex;
+    const nextIndex = Math.max(0, Math.min(cards.length - 1, startIndex + Math.sign(direction)));
+    if (nextIndex === selectedIndex) return;
+    cards[nextIndex].querySelector(".hanging-gallery-thumb")?.click();
   }
 
   renderHangingGallery() {
-    if (!this.hangingPreparedWorks.length) return;
-    const seenIds = new Set();
-    const seenArtworks = new Set();
-    const available = this.hangingPreparedWorks.filter((work) => {
-      if (!work?.id || this.hangingDismissedIds.has(work.id) || seenIds.has(work.id)) return false;
-      seenIds.add(work.id);
-      const signature = String(work.imageDataUrl || "").trim();
-      if (signature && seenArtworks.has(signature)) return false;
-      if (signature) seenArtworks.add(signature);
-      return true;
-    });
+    const available = this.hangingPreparedWorks.filter((work) => work?.id && work.category === "mine");
     const validIds = new Set(available.map((work) => work.id));
-    this.hangingSelectedIds = new Set([...this.hangingSelectedIds].filter((id) => validIds.has(id)));
-    if (!this.hangingGalleryDefaultsChosen) {
-      const shuffled = [...available];
-      for (let index = shuffled.length - 1; index > 0; index -= 1) {
-        const swap = Math.floor(Math.random() * (index + 1));
-        [shuffled[index], shuffled[swap]] = [shuffled[swap], shuffled[index]];
-      }
-      shuffled.slice(0, Math.min(4, shuffled.length)).forEach((work) => this.hangingSelectedIds.add(work.id));
-      this.hangingGalleryDefaultsChosen = true;
+    if (!validIds.has(this.hangingFocusId)) {
+      const storedSelection = this.store.getSelectedWorkId();
+      this.hangingFocusId = validIds.has(storedSelection) ? storedSelection : null;
     }
-    const workById = new Map(available.map((work) => [work.id, work]));
-    const selected = [...this.hangingSelectedIds].map((id) => workById.get(id)).filter(Boolean).slice(0, 5);
-    this.hangingSelectedIds = new Set(selected.map((work) => work.id));
-    const parasols = document.getElementById("hangingGalleryParasols");
-    parasols.replaceChildren();
-    selected.forEach((work, index) => {
-      const hanger = document.createElement("article");
-      hanger.className = "hanging-parasol-hanger";
-      hanger.dataset.ropeT = `${(index + 1) / (selected.length + 1)}`;
-      let motionSeed = 0;
-      const motionKey = String(work.id);
-      for (let charIndex = 0; charIndex < motionKey.length; charIndex += 1) motionSeed = (motionSeed * 31 + motionKey.charCodeAt(charIndex)) >>> 0;
-      const swayAmplitude = .78 + (motionSeed % 13) / 10;
-      const swayPeriod = 6.8 + (motionSeed % 41) / 10;
-      const depthScale = .96 + (motionSeed % 9) / 100;
-      hanger.style.setProperty("--sway-duration", `${swayPeriod.toFixed(1)}s`);
-      hanger.style.setProperty("--sway-delay", `${-((motionSeed % 100) / 100 * swayPeriod).toFixed(2)}s`);
-      hanger.style.setProperty("--sway-left", `${-swayAmplitude.toFixed(2)}deg`);
-      hanger.style.setProperty("--sway-right", `${swayAmplitude.toFixed(2)}deg`);
-      hanger.style.setProperty("--hanger-scale", depthScale.toFixed(2));
-      // Tiny depth/scale variation keeps the display dimensional without
-      // separating the umbrellas from the room as floating foreground props.
-      hanger.style.setProperty("--hanger-z", `${(-4 + ((depthScale - .96) / .08) * 12).toFixed(1)}px`);
-      hanger.style.setProperty("--hanger-depth", String(Math.round(depthScale * 10)));
-      hanger.dataset.gustFactor = `${.42 + (motionSeed % 48) / 100}`;
-      const cord = document.createElement("span");
-      cord.className = "hanging-parasol-cord";
-      cord.setAttribute("aria-hidden", "true");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "hanging-parasol";
-      button.setAttribute("aria-label", "点击欣赏这把绸伞的三维模型");
-      const body = document.createElement("span");
-      body.className = "hanging-parasol-body";
-      const image = document.createElement("img");
-      image.src = work.parasolPreview?.src || work.imageDataUrl;
-      image.alt = "悬挂展示的绸伞";
-      image.draggable = false;
-      body.append(image);
-      button.append(body);
-      button.addEventListener("click", () => {
-        const bounds = button.getBoundingClientRect();
-        void this.openGalleryFocus(work, { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 });
-      });
-      hanger.append(cord, button);
-      parasols.append(hanger);
-    });
-    requestAnimationFrame(() => this.positionHangingGalleryParasols());
+    this.hangingWorld?.setFocusedWork(this.hangingFocusId);
 
     const track = document.getElementById("hangingGalleryTrack");
-    track.replaceChildren();
+    const empty = document.getElementById("hangingGalleryEmpty");
+    const isEmpty = available.length === 0;
+    empty.hidden = !isEmpty;
+    document.querySelector(".hanging-gallery-rail").hidden = isEmpty;
+    document.querySelectorAll(".hanging-gallery-arrow").forEach((button) => { button.hidden = isEmpty; });
+    const visibleIds = new Set();
+    let cursor = track.firstElementChild;
     available.forEach((work) => {
-      const card = document.createElement("article");
-      card.className = `hanging-gallery-card${this.hangingSelectedIds.has(work.id) ? " is-selected" : ""}`;
-      const choose = document.createElement("button");
-      choose.type = "button";
-      choose.className = "hanging-gallery-thumb";
-      choose.setAttribute("aria-pressed", String(this.hangingSelectedIds.has(work.id)));
-      choose.setAttribute("aria-label", this.hangingSelectedIds.has(work.id) ? "从上方展陈中取下这把伞" : "将这把伞挂到上方展陈");
-      const image = document.createElement("img");
-      image.src = work.parasolPreview?.src || work.imageDataUrl;
-      image.alt = "绸伞作品预览";
-      image.loading = "lazy";
-      choose.append(image);
-      choose.addEventListener("click", () => {
-        if (this.hangingSelectedIds.has(work.id)) this.hangingSelectedIds.delete(work.id);
-        else {
-          if (this.hangingSelectedIds.size >= 5) this.hangingSelectedIds.delete(this.hangingSelectedIds.values().next().value);
-          this.hangingSelectedIds.add(work.id);
-        }
-        this.renderHangingGallery();
-      });
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "hanging-gallery-remove";
-      remove.textContent = "×";
-      remove.setAttribute("aria-label", work.category === "mine" ? "删除这件自绘作品" : "从悬伞展廊移除这把预设伞");
-      remove.title = work.category === "mine" ? "删除自绘作品" : "从本次展陈移除";
-      remove.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (work.category === "mine") {
+      visibleIds.add(work.id);
+      let card = this.hangingCards.get(work.id);
+      let choose, image;
+      if (!card) {
+        card = document.createElement("article");
+        card.dataset.workId = work.id;
+        choose = document.createElement("button");
+        choose.type = "button";
+        choose.className = "hanging-gallery-thumb";
+        choose.setAttribute("aria-label", "选中这把绸伞并在街景中高亮");
+        image = document.createElement("img");
+        image.alt = "自绘绸伞伞面预览";
+        image.loading = "lazy";
+        choose.append(image);
+        choose.addEventListener("click", () => {
+          this.store.select(work.id);
+          this.hangingFocusId = work.id;
+          this.renderHangingGallery();
+          card.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+        });
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "hanging-gallery-remove";
+        remove.innerHTML = '<svg class="trash-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="trash-lid" d="M4.5 7h15M9 7V4.8h6V7"/><path d="m7 7 .8 12h8.4L17 7M10 10.5v5.7m4-5.7v5.7"/></svg>';
+        remove.setAttribute("aria-label", "删除这件自绘作品");
+        remove.title = "删除自绘作品";
+        remove.addEventListener("click", (event) => {
+          event.stopPropagation();
           if (!window.confirm("确定删除这把自绘绸伞吗？删除后无法恢复。")) return;
           if (this.store.delete(work.id)) this.refreshGallery();
-        } else {
-          this.hangingDismissedIds.add(work.id);
-          this.hangingSelectedIds.delete(work.id);
-          this.renderHangingGallery();
+        });
+        card.append(choose, remove);
+        this.hangingCards.set(work.id, card);
+      } else {
+        choose = card.querySelector(".hanging-gallery-thumb");
+        image = choose.querySelector("img");
+      }
+      const selected = work.id === this.hangingFocusId;
+      card.className = `hanging-gallery-card${selected ? " is-selected" : ""}`;
+      choose.setAttribute("aria-pressed", String(selected));
+      const previewSource = work.galleryRailPreview?.src || work.parasolPreview?.src || work.imageDataUrl || work.motifUrl;
+      if (previewSource && image.dataset.source !== previewSource) {
+        image.dataset.source = previewSource;
+        image.src = previewSource;
+      }
+      if (card !== cursor) track.insertBefore(card, cursor);
+      cursor = card.nextElementSibling;
+    });
+    for (const [id, card] of this.hangingCards) {
+      if (visibleIds.has(id)) continue;
+      card.remove();
+      this.hangingCards.delete(id);
+    }
+    if (!this.hangingFocusId) this.lastHangingRailSelection = null;
+    if (this.hangingFocusId && this.lastHangingRailSelection !== this.hangingFocusId) {
+      this.lastHangingRailSelection = this.hangingFocusId;
+      const selectedCard = this.hangingCards.get(this.hangingFocusId);
+      requestAnimationFrame(() => {
+        if (selectedCard?.isConnected && this.hangingFocusId === selectedCard.dataset.workId) {
+          selectedCard.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
         }
       });
-      card.append(choose, remove);
-      track.append(card);
-    });
+    }
   }
 
   refreshGallery() {
     if (!this.app.isReady) return;
-    this.featuredWork ||= this.store.createFeatured(this.app.canvasManager.getUmbrellaTextureCanvas());
     this.imageCache.clear();
     this.galleryPreviewCache.clear();
     this.filterGallery();
-    this.renderGalleryWorksPanel();
   }
 
   filterGallery() {
-    const saved = this.store.list();
-    const recentSaved = [...saved].reverse();
-    const featured = this.featuredWork;
-    const traditional = this.curatedWorks.filter((work) => work.category === "traditional");
-    const creative = this.curatedWorks.filter((work) => work.category === "creative");
-    const works = [...recentSaved, featured, ...traditional, ...creative].filter((work, index, all) => work && all.findIndex((item) => item?.id === work.id) === index);
+    const fallbackMaterial = this.app.controls.getSettings().fabricMaterial || "georgette";
+    const works = [...this.store.list()].reverse()
+      .filter((work) => work.category === "mine")
+      .map((work) => ({ ...work, fabricMaterial: work.fabricMaterial || fallbackMaterial }));
     this.galleryWorks = works;
-    const assignments = this.store.getAssignments();
-    const defaultWorks = works;
-    const sceneWorks = Array.from({ length: 8 }, (_, slot) =>
-      works.find((work) => work.id === assignments[String(slot)]) || defaultWorks[slot % Math.max(defaultWorks.length, 1)]
-    ).filter(Boolean);
+    this.hangingPreparedWorks = works;
+    if (!works.some((work) => work.id === this.hangingFocusId)) {
+      const storedSelection = this.store.getSelectedWorkId();
+      this.hangingFocusId = works.some((work) => work.id === storedSelection) ? storedSelection : null;
+    }
+    if (this.hangingGalleryMode) this.renderHangingGallery();
+    if (this.hangingGalleryMode) void this.hangingWorld?.setWorks(works, (work) => this.getCanvas(work), this.hangingFocusId);
     const token = ++this.galleryPreparationToken;
-    this.galleryScene?.host.classList.add("is-preparing");
-    if (this.galleryScene) void this.prepareGalleryWorks(sceneWorks, token, works);
-    document.getElementById("galleryEmpty").hidden = works.length > 0;
+    void this.prepareHangingWorks(works, token);
   }
 
-  renderGalleryWorksPanel() {
-    const grid = document.getElementById("galleryWorksGrid");
-    const filter = document.querySelector("[data-gallery-filter].is-active")?.dataset.galleryFilter || "all";
-    const works = (this.galleryWorks || []).filter((work) => filter !== "mine" || work.category === "mine");
-    grid.replaceChildren();
-    if (!works.length) {
-      const empty = document.createElement("div");
-      empty.className = "gallery-works-empty";
-      empty.innerHTML = '<p>还没有保存的绸伞</p><a href="#studio" data-route="studio">前往绘制工坊</a>';
-      empty.querySelector("a").addEventListener("click", (event) => { event.preventDefault(); this.closeGalleryWorksPanel(); this.navigate("studio"); });
-      grid.append(empty);
-      return;
-    }
-    works.forEach((work) => {
-      const card = document.createElement("article");
-      card.className = "gallery-work-card";
-      const image = document.createElement("img");
-      image.src = work.imageDataUrl;
-      image.alt = "绸伞伞面纹样";
-      image.loading = "lazy";
-      const actions = document.createElement("div");
-      actions.className = "gallery-work-actions";
-      const show = document.createElement("button");
-      show.type = "button";
-      show.className = "gallery-work-action-show";
-      show.textContent = "展示";
-      show.addEventListener("click", () => {
-        const slot = Number.isInteger(this.galleryScene?.selectedWalkerIndex) ? this.galleryScene.selectedWalkerIndex : 0;
-        this.store.assign(slot, work.id);
-        this.filterGallery();
-        this.closeGalleryWorksPanel();
-      });
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "gallery-work-action-delete";
-      remove.textContent = "删除";
-      if (work.category === "mine") {
-        remove.setAttribute("aria-label", "删除这件我的作品");
-        remove.addEventListener("click", () => {
-          if (!window.confirm("确定删除这把绸伞吗？删除后无法恢复。")) return;
-          if (this.store.delete(work.id)) this.refreshGallery();
-        });
-      } else {
-        remove.disabled = true;
-        remove.title = "预设作品不可删除";
-        remove.setAttribute("aria-label", "预设作品不可删除");
-      }
-      actions.append(show, remove);
-      card.append(image, actions);
-      grid.append(card);
-    });
-  }
-
-  async prepareGalleryWorks(sceneWorks, token, allWorks = this.galleryWorks) {
-    let preview = null;
-    try {
-      preview = await this.app.ensureBundledUmbrella();
-    } catch (error) {
-      // Keep the walk scene visible even if WebGL is unavailable. The actual
-      // 3D focus will still report its own actionable error when selected.
-      console.warn("画廊 3D 伞模不可用，将使用本地伞面预览：", error);
-    }
-    const prepared = [];
-    const uniqueWorks = [...new Map([...allWorks, ...sceneWorks].filter(Boolean).map((work) => [work.id, work])).values()];
-    for (let index = 0; index < uniqueWorks.length; index += 1) {
-      const work = uniqueWorks[index];
-      const pose = GalleryScene.poseForIndex(index);
-      let canvas = null;
-      let thumbnail = null;
+  async prepareHangingWorks(works, token) {
+    const prepared = await Promise.all(works.map(async (work) => {
       try {
-        canvas = await this.getCanvas(work);
-        const previewKey = `${work.id}:${pose.character}`;
-        const cached = this.galleryPreviewCache.get(previewKey);
-        if (cached?.canvas === canvas) thumbnail = cached.thumbnail;
-        else if (preview?.captureGalleryParasolPreview) {
-          thumbnail = preview.captureGalleryParasolPreview(canvas, `gallery-thumbnail-${work.id}-${token}`, pose);
-          this.galleryPreviewCache.set(previewKey, { canvas, thumbnail });
+        const canvas = await this.getCanvas(work);
+        let preview = this.galleryPreviewCache.get(work.id);
+        if (preview?.canvas !== canvas) {
+          preview = { canvas, railThumbnail: this.createGalleryParasolFallback(canvas) };
+          this.galleryPreviewCache.set(work.id, preview);
         }
+        return { ...work, parasolPreview: preview.railThumbnail, galleryRailPreview: preview.railThumbnail };
       } catch (error) {
-        console.warn(`作品 ${work.id} 的 3D 伞面预览生成失败：`, error);
+        console.warn(`作品 ${work.id} 的伞面预览生成失败：`, error);
+        return work;
       }
-      if (!thumbnail && canvas) thumbnail = this.createGalleryParasolFallback(canvas);
-      if (thumbnail) {
-        prepared.push({ ...work, galleryPose: { yaw: pose.yaw, roll: pose.roll }, parasolPreview: thumbnail });
-      }
-    }
+    }));
     if (token !== this.galleryPreparationToken || this.page !== "gallery") return;
     const preparedById = new Map(prepared.map((work) => [work.id, work]));
-    this.galleryScene?.setWorks(sceneWorks.map((work) => preparedById.get(work.id)).filter(Boolean));
-    this.hangingPreparedWorks = allWorks.map((work) => preparedById.get(work.id)).filter(Boolean);
+    this.galleryWorks = this.galleryWorks.map((work) => preparedById.get(work.id) || work);
+    this.hangingPreparedWorks = this.galleryWorks;
     if (this.hangingGalleryMode) this.renderHangingGallery();
-    this.galleryScene?.host.classList.remove("is-preparing");
   }
 
   createGalleryParasolFallback(artworkCanvas) {
     const canvas = document.createElement("canvas");
-    canvas.width = 384;
+    canvas.width = 256;
     canvas.height = 256;
     const context = canvas.getContext("2d");
     if (!context || !artworkCanvas) return null;
-    const centerX = 192;
-    const crownY = 30;
-    const radiusX = 154;
-    const radiusY = 68;
+    const center = 128;
+    const radius = 126;
     context.save();
     context.beginPath();
-    context.moveTo(centerX - radiusX, crownY + radiusY * .58);
-    context.quadraticCurveTo(centerX, crownY - radiusY * 1.1, centerX + radiusX, crownY + radiusY * .58);
-    context.quadraticCurveTo(centerX, crownY + radiusY * 1.42, centerX - radiusX, crownY + radiusY * .58);
-    context.closePath();
+    context.arc(center, center, radius, 0, Math.PI * 2);
     context.clip();
-    context.fillStyle = "#e9e2d1";
-    context.fillRect(centerX - radiusX, crownY - radiusY, radiusX * 2, radiusY * 2.4);
-    context.globalAlpha = .88;
-    context.drawImage(artworkCanvas, centerX - radiusX, crownY - radiusY * .4, radiusX * 2, radiusY * 1.8);
+    // Use the saved artwork's pixels and alpha without recoloring the dye or
+    // applying the 3D fabric's transparency a second time.
+    context.drawImage(artworkCanvas, center - radius, center - radius, radius * 2, radius * 2);
     context.restore();
     context.lineCap = "round";
     context.lineJoin = "round";
-    const ribCount = 16;
+    const ribCount = 36;
     for (let index = 0; index < ribCount; index += 1) {
-      const t = index / (ribCount - 1) * 2 - 1;
-      const x = centerX + radiusX * t;
-      const y = crownY + radiusY * .58 * (1 - t * t);
-      context.strokeStyle = index % 2 ? "rgba(106,91,65,.48)" : "rgba(224,211,178,.9)";
-      context.lineWidth = index % 2 ? 1.35 : 2.2;
+      const angle = index / ribCount * Math.PI * 2;
+      const x = center + Math.cos(angle) * (radius - 2);
+      const y = center + Math.sin(angle) * (radius - 2);
+      context.strokeStyle = index % 2 ? "rgba(78,68,50,.23)" : "rgba(255,247,225,.48)";
+      context.lineWidth = index % 2 ? 1.05 : 1.35;
       context.beginPath();
-      context.moveTo(centerX, crownY + 2);
-      context.quadraticCurveTo(centerX + (x - centerX) * .52, crownY + radiusY * .42, x, y);
+      context.moveTo(center, center);
+      context.quadraticCurveTo(center + (x - center) * .53, center + (y - center) * .53 - 5, x, y);
       context.stroke();
     }
-    context.strokeStyle = "rgba(100,77,48,.88)";
-    context.lineWidth = 3;
+    context.strokeStyle = "rgba(86,68,45,.48)";
+    context.lineWidth = 1.4;
     context.beginPath();
-    context.moveTo(centerX, crownY + 4);
-    context.lineTo(centerX, 225);
+    context.arc(center, center, radius - 1, 0, Math.PI * 2);
     context.stroke();
-    context.strokeStyle = "rgba(232,218,185,.76)";
-    context.lineWidth = 1;
+    const hub = context.createRadialGradient(center - 1, center - 1, 0, center, center, 5);
+    hub.addColorStop(0, "#f0e2c3");
+    hub.addColorStop(1, "#756348");
+    context.fillStyle = hub;
     context.beginPath();
-    context.moveTo(centerX - 1, crownY + 8);
-    context.lineTo(centerX - 1, 224);
-    context.stroke();
-    return { src: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height, gripX: .5, gripY: .77, canopyBottom: .48 };
+    context.arc(center, center, 4.5, 0, Math.PI * 2);
+    context.fill();
+    return { src: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height, gripX: .5, gripY: .5, canopyBottom: .94 };
   }
 
   async openGalleryFocus(work, origin = null) {
     if (!work) return;
+    if (work.category === "mine") {
+      this.hangingFocusId = work.id;
+      this.renderHangingGallery();
+      this.hangingWorld?.setFocusedWork(work.id);
+    }
     const requestToken = ++this.galleryFocusRequestToken;
-    this.closeGalleryWorksPanel?.();
     const page = document.getElementById("galleryPage");
     const focus = document.getElementById("galleryFocus");
     window.clearTimeout(this.focusCloseTimer);
@@ -1064,12 +815,12 @@ export class SiteExperience {
     host.style.setProperty("--focus-origin-x", `${originX}%`);
     host.style.setProperty("--focus-origin-y", `${originY}%`);
     page.classList.add("is-focused");
-    this.galleryScene?.setFocused(true);
+    this.hangingWorld?.setActive(false);
     this.inkWashBackground?.setSceneMode("gallery");
     try {
       const canvas = await this.getCanvas(work);
       if (focus.hidden || requestToken !== this.galleryFocusRequestToken) return;
-      await this.app.presentShowcase(host, canvas, `gallery-${work.id}`, work.galleryPose || null);
+      await this.app.presentShowcase(host, canvas, `gallery-${work.id}`, work.galleryPose || null, work.fabricMaterial || this.app.controls.getSettings().fabricMaterial || "georgette");
     } catch (error) {
       console.warn("画廊绸伞预览暂不可用：", error);
       if (focus.hidden || requestToken !== this.galleryFocusRequestToken) return;
@@ -1087,8 +838,8 @@ export class SiteExperience {
       focus.hidden = true;
       focus.classList.remove("is-closing");
       document.getElementById("galleryPage").classList.remove("is-focused");
-      this.galleryScene?.setFocused(false);
       this.app.suspendShowcase();
+      if (this.hangingGalleryMode && this.page === "gallery" && !document.hidden) this.hangingWorld?.setActive(true);
     };
     if (immediate) {
       window.clearTimeout(this.focusCloseTimer);

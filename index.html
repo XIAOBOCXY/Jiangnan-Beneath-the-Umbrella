@@ -14,9 +14,9 @@
       }
     }
   </script>
-  <link rel="preload" href="assets/fonts/AlimamaDaoLiTi.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="assets/fonts/ChillHuoKai.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=20261101-silk-craft-v3">
+  <link rel="preload" href="assets/fonts/AlimamaDaoLiTi-full.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/ChillHuoKai-site.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css?v=20261111-bottom-font-v1">
 </head>
 <body>
   <div class="paper-grain" aria-hidden="true"></div>
@@ -88,7 +88,7 @@
         <nav class="home-actions" aria-label="探索西湖绸伞">
           <a class="home-action home-action-primary" href="#studio" data-route="studio">绘制绸伞</a>
           <a class="home-action" href="#heritage" data-route="heritage">了解文化</a>
-          <a class="home-action" href="#gallery" data-route="gallery">作品画廊</a>
+          <a class="home-action" href="#gallery" data-route="gallery">悬伞画廊</a>
         </nav>
       </section>
       <div class="home-umbrella-stage" aria-label="可拖动欣赏的西湖绸伞">
@@ -106,7 +106,7 @@
             <a href="#home" data-route="home" aria-label="首页"><span aria-hidden="true">首页</span></a>
             <a href="#heritage" data-route="heritage" aria-label="非遗文化" aria-current="page"><span aria-hidden="true">非遗文化</span></a>
             <a href="#studio" data-route="studio" aria-label="绘制工坊"><span aria-hidden="true">绘制工坊</span></a>
-            <a href="#gallery" data-route="gallery" aria-label="作品画廊"><span aria-hidden="true">作品画廊</span></a>
+            <a href="#gallery" data-route="gallery" aria-label="悬伞画廊"><span aria-hidden="true">悬伞画廊</span></a>
           </nav>
           <nav class="heritage-tabs heritage-tabs-left" aria-label="已翻过的书页索引签">
             <button type="button" data-heritage-spread="1" aria-label="返回创制与流传"><span>创制</span></button>
@@ -283,65 +283,40 @@
   </section>
 
   <section class="site-page gallery-page" id="galleryPage" hidden>
-    <div class="gallery-classic-view" id="galleryClassicView">
-      <div class="gallery-viewport" id="galleryViewport" aria-label="雨中西湖拱桥场景">
-        <div class="gallery-three-host" id="gallerySceneHost" aria-label="人物沿拱桥桥面行走；点击绸伞打开三维欣赏"></div>
-        <div class="gallery-empty" id="galleryEmpty" hidden><p>你的伞画将在这里与江南相遇</p><a href="#studio" data-route="studio">去绘制一把伞</a></div>
-      </div>
-      <a class="gallery-corner-brand" href="#home" data-route="home" aria-label="返回首页">西湖绸伞</a>
-      <nav class="gallery-floating-nav" aria-label="画廊导航">
-        <a href="#home" data-route="home">首页</a><a href="#heritage" data-route="heritage">非遗文化</a><a href="#studio" data-route="studio">绘制工坊</a>
-        <button type="button" id="galleryWorksToggle" data-ink-nav aria-controls="galleryWorksPanel" aria-expanded="false">全部绸伞</button>
-        <button type="button" id="galleryHangingOpen" data-ink-nav>悬伞展廊</button>
-      </nav>
-      <aside class="gallery-works-panel" id="galleryWorksPanel" aria-label="全部绸伞" hidden>
-        <div class="gallery-works-heading"><h2>全部绸伞</h2><button type="button" id="galleryWorksClose" aria-label="关闭作品列表">×</button></div>
-        <div class="gallery-works-filters" role="group" aria-label="筛选绸伞"><button type="button" data-gallery-filter="all" class="is-active">全部作品</button><button type="button" data-gallery-filter="mine">我的作品</button></div>
-        <div class="gallery-works-grid" id="galleryWorksGrid"></div>
-      </aside>
-    </div>
-    <main class="hanging-gallery" id="hangingGallery" hidden aria-label="悬挂绸伞展廊">
+    <main class="hanging-gallery" id="hangingGallery" aria-label="悬挂绸伞展廊">
       <div class="hanging-gallery-scene" id="hangingGalleryScene">
-        <div class="hanging-gallery-backdrop" aria-hidden="true"></div>
-        <div class="hanging-gallery-inkflow" aria-hidden="true"></div>
-        <div class="hanging-gallery-mist hanging-gallery-mist--far" aria-hidden="true"></div>
-        <div class="hanging-gallery-waterwash" aria-hidden="true"></div>
-        <div class="hanging-gallery-timewash" aria-hidden="true"></div>
-        <div class="hanging-gallery-mist hanging-gallery-mist--near" aria-hidden="true"></div>
-        <section class="hanging-gallery-stage" id="hangingGalleryStage" aria-label="随风轻摆的悬挂绸伞">
-          <div class="hanging-gallery-suspension" id="hangingGallerySuspension">
-            <div class="hanging-gallery-rope" aria-hidden="true">
-              <svg class="hanging-gallery-rope-svg" viewBox="0 0 100 40" preserveAspectRatio="none" role="presentation">
-                <path class="hanging-gallery-rope-shadow" d="M1 4 C27 4 37 36 50 36 C63 36 73 4 99 4"></path>
-                <path class="hanging-gallery-rope-main" d="M1 2 C27 2 37 34 50 34 C63 34 73 2 99 2"></path>
-                <path class="hanging-gallery-rope-glint" d="M1 1 C27 1 37 33 50 33 C63 33 73 1 99 1"></path>
-              </svg>
-              <i class="hanging-gallery-rope-anchor hanging-gallery-rope-anchor--left"></i>
-              <i class="hanging-gallery-rope-anchor hanging-gallery-rope-anchor--right"></i>
-            </div>
-            <div class="hanging-gallery-parasols" id="hangingGalleryParasols"></div>
-          </div>
-          <div class="hanging-gallery-walkers" id="hangingGalleryWalkers" aria-hidden="true"></div>
-          <div class="hanging-gallery-weather" aria-hidden="true"></div>
-        </section>
-        <div class="hanging-gallery-unifier" aria-hidden="true"></div>
-        <div class="hanging-gallery-grain" aria-hidden="true"></div>
+        <div class="hanging-gallery-three" id="hangingGallery3D" aria-label="随风轻摆的三维悬挂绸伞与江南街景">
+          <p class="hanging-gallery-loading" role="status">正在布置悬伞街景…</p>
+        </div>
       </div>
       <nav class="page-nav heritage-page-nav hanging-gallery-nav" aria-label="页面导航">
         <a href="#home" data-route="home"><span>首页</span></a>
         <a href="#heritage" data-route="heritage"><span>非遗文化</span></a>
         <a href="#studio" data-route="studio"><span>绘制工坊</span></a>
-        <button type="button" data-ink-nav data-gallery-mode="classic"><span>原画廊</span></button>
+        <a href="#gallery" data-route="gallery" aria-current="page"><span>悬伞画廊</span></a>
       </nav>
+      <div class="hanging-display-controls">
+        <div class="hanging-weather-controls" role="group" aria-label="天气模式">
+          <button type="button" data-hanging-weather="sunny" aria-label="晴天" title="晴天" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.5v2.2m0 14.6v2.2M4.9 4.9l1.6 1.6m11 11 1.6 1.6M2.5 12h2.2m14.6 0h2.2M4.9 19.1l1.6-1.6m11-11 1.6-1.6"/></svg></button>
+          <button type="button" data-hanging-weather="rainy" aria-label="雨天" title="雨天" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.2 14.9h11.2a3.3 3.3 0 0 0 .2-6.6A5.7 5.7 0 0 0 6.8 8a3.5 3.5 0 0 0-.6 6.9Z"/><path d="m8.5 17.2-.8 2m5-2-.8 2m5-2-.8 2"/></svg></button>
+        </div>
+        <div class="hanging-time-controls" role="group" aria-label="昼夜模式">
+          <button type="button" data-hanging-time="day" aria-label="白天" title="白天" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2m0 15v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2.5 12h2m15 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+          <button type="button" data-hanging-time="night" aria-label="黑夜" title="黑夜" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 15.2A8.2 8.2 0 0 1 8.8 4.6 8.2 8.2 0 1 0 19.4 15.2Z"/></svg></button>
+        </div>
+      </div>
       <div class="hanging-gallery-rail" aria-label="选择展示的绸伞">
         <button type="button" class="hanging-gallery-arrow" id="hangingGalleryPrev" aria-label="向左浏览作品">‹</button>
         <div class="hanging-gallery-track" id="hangingGalleryTrack" tabindex="0"></div>
         <button type="button" class="hanging-gallery-arrow" id="hangingGalleryNext" aria-label="向右浏览作品">›</button>
       </div>
+      <div class="hanging-gallery-empty" id="hangingGalleryEmpty" hidden>
+        <p>还没有保存的绸伞</p>
+        <button type="button" id="hangingGalleryCreate">去绘制一把</button>
+      </div>
     </main>
     <section class="gallery-focus" id="galleryFocus" hidden aria-label="独立绸伞欣赏">
       <div class="gallery-focus-fog" aria-hidden="true"></div><div class="gallery-focus-host showcase-canvas-host" id="galleryFocusHost"></div>
-      <button class="gallery-focus-close" id="galleryFocusClose" type="button" aria-label="关闭独立欣赏">×</button>
     </section>
   </section>
 
@@ -351,7 +326,7 @@
       <a href="#home" data-route="home" aria-label="首页"><span aria-hidden="true">首页</span></a>
       <a href="#heritage" data-route="heritage" aria-label="非遗文化"><span aria-hidden="true">非遗文化</span></a>
       <a href="#studio" data-route="studio" aria-label="绘制工坊" aria-current="page"><span aria-hidden="true">绘制工坊</span></a>
-      <a href="#gallery" data-route="gallery" aria-label="作品画廊"><span aria-hidden="true">作品画廊</span></a>
+      <a href="#gallery" data-route="gallery" aria-label="悬伞画廊"><span aria-hidden="true">悬伞画廊</span></a>
     </nav>
 
     <main class="main-content">
@@ -374,6 +349,7 @@
             <canvas id="umbrellaCanvas" width="720" height="720" aria-label="西湖绸伞绘制画布；伞面内绘制，左侧空白拖动旋转，滚轮缩放"></canvas>
             <div class="fluid-host" id="fluidHost" aria-hidden="true"></div>
           </div>
+          <div class="selection-overlay-viewport" id="selectionOverlayViewport" aria-hidden="true"><canvas id="selectionOverlay"></canvas></div>
         </div>
         <div class="three-viewer" id="threeViewer" hidden aria-label="西湖绸伞三维预览">
           <div class="three-host" id="threeHost"></div>
@@ -390,7 +366,7 @@
             <button type="button" class="view-button is-active" data-view-mode="2d" aria-pressed="true">2D 绘制</button>
             <button type="button" class="view-button" data-view-mode="3d" aria-pressed="false">3D 赏伞</button>
           </div>
-          <button class="viewer-button audio-reactive-button" id="audioReactiveBtn" type="button" aria-pressed="false" title="点击开启内置音乐与绸面声光响应">
+          <button class="viewer-button audio-reactive-button" id="audioReactiveBtn" type="button" aria-pressed="false" title="点击开启内置音乐与绸面声光响应" hidden>
             <span class="audio-button-label">声光响应</span>
             <span class="audio-meter" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           </button>
@@ -398,7 +374,10 @@
         </div>
       </section>
 
-      <aside class="controls" aria-label="创作工具">
+      <div class="studio-scroll" id="studioScroll">
+        <div class="studio-scroll-sheet" id="studioScrollSheet">
+          <div class="studio-scroll-paper">
+      <aside class="controls" id="studioControls" aria-label="创作工具">
         <section class="studio-action-bar" aria-label="创作快捷操作">
           <button class="button btn-accent" id="randomBtn" type="button">灵感</button>
           <button class="button btn-secondary" id="clearBtn" type="button">清空</button>
@@ -438,13 +417,13 @@
           </div>
           <div class="control-item">
             <label for="brushSize">大小</label>
-            <input type="range" id="brushSize" min="4" max="28" step="1" value="8">
-            <output class="value-display" id="brushSizeValue">8</output>
+            <input type="range" id="brushSize" min="1" max="10" step="1" value="2">
+            <output class="value-display" id="brushSizeValue">2</output>
           </div>
           <div class="control-item">
             <label for="opacity">浓淡</label>
-            <input type="range" id="opacity" min="10" max="100" step="1" value="45">
-            <output class="value-display" id="opacityValue">45%</output>
+            <input type="range" id="opacity" min="1" max="10" step="1" value="5">
+            <output class="value-display" id="opacityValue">5</output>
           </div>
         </section>
 
@@ -465,47 +444,48 @@
             <div class="pattern-categories" id="patternCategoryTabs" role="group" aria-label="纹样分类"></div>
           </div>
           <div class="pattern-picker">
-            <button type="button" class="pattern-nav-button" data-carousel="prev" aria-label="向左滑动纹样">‹</button>
             <div class="pattern-carousel" id="patternCarousel" role="listbox" aria-label="选择纹样"></div>
-            <button type="button" class="pattern-nav-button" data-carousel="next" aria-label="向右滑动纹样">›</button>
           </div>
-        </section>
-
-        <section class="control-group pattern-edit-group" id="patternTools" hidden>
-          <div class="pattern-repeat-action">
-            <button type="button" class="repeat-button" id="repeatBtn"><span aria-hidden="true">↻</span> 环形重复</button>
-            <button type="button" class="repeat-button delete-button" id="deletePatternBtn"><span aria-hidden="true">×</span> 删除</button>
-          </div>
-          <div class="control-item"><label for="repeatCount">重复数</label><input type="range" id="repeatCount" min="2" max="16" step="1" value="8"><output class="value-display" id="repeatCountValue">8</output></div>
-          <div class="control-item"><label for="patternScale">大小</label><input type="range" id="patternScale" min="0.06" max="3" step="0.01" value="1"><output class="value-display" id="patternScaleValue">100%</output></div>
-          <div class="control-item"><label for="patternRotation">角度</label><input type="range" id="patternRotation" min="-180" max="180" step="1" value="0"><output class="value-display" id="patternRotationValue">0°</output></div>
+          <div class="pattern-page-indicators" id="patternPageIndicators" role="group" aria-label="纹样分页"></div>
         </section>
 
         <section class="control-group fabric-group" id="fabricTools" hidden>
           <div class="fabric-settings">
             <div class="fabric-color-section">
               <h3>伞面颜色</h3>
+              <div class="brush-color-layout fabric-color-layout">
+              <div class="current-brush-color" aria-label="当前伞面颜色"><span class="current-brush-swatch" id="currentFabricColor" aria-hidden="true"></span></div>
               <div class="swatch-row fabric-swatches" role="group" aria-label="伞面颜色">
-                <button type="button" class="fabric-swatch is-active" data-fabric-color="#718c7d" style="--swatch:#718c7d" aria-label="湖色乔其纱" title="湖色乔其纱"></button>
-                <button type="button" class="fabric-swatch" data-fabric-color="#d3c6ac" style="--swatch:#d3c6ac" aria-label="暖牙色绸" title="暖牙色绸"></button>
-                <button type="button" class="fabric-swatch" data-fabric-color="#7393a3" style="--swatch:#7393a3" aria-label="天青色绸" title="天青色绸"></button>
-                <button type="button" class="fabric-swatch" data-fabric-color="#879779" style="--swatch:#879779" aria-label="新绿色绸" title="新绿色绸"></button>
-                <button type="button" class="fabric-swatch" data-fabric-color="#c68f91" style="--swatch:#c68f91" aria-label="玫瑰色绸" title="玫瑰色绸"></button>
-                <button type="button" class="fabric-swatch" data-fabric-color="#c6a766" style="--swatch:#c6a766" aria-label="淡黄色绸" title="淡黄色绸"></button>
-                <button type="button" class="fabric-swatch" data-fabric-color="#587063" style="--swatch:#587063" aria-label="黛绿色绸" title="黛绿色绸"></button>
+                <label class="custom-color-button" for="fabricColorPicker" aria-label="自选伞面颜色" title="自选伞面颜色"><span aria-hidden="true">＋</span><input type="color" id="fabricColorPicker" value="#8aa79b" aria-label="自选伞面颜色"></label>
+                <button type="button" class="fabric-swatch is-active" data-fabric-color="#8aa79b" style="--swatch:#8aa79b" aria-label="湖色乔其纱" title="湖色乔其纱"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#d9cdb8" style="--swatch:#d9cdb8" aria-label="暖牙色绸" title="暖牙色绸"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#91acb8" style="--swatch:#91acb8" aria-label="天青色绸" title="天青色绸"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#9caf8e" style="--swatch:#9caf8e" aria-label="新绿色绸" title="新绿色绸"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#d0a0a5" style="--swatch:#d0a0a5" aria-label="玫瑰色绸" title="玫瑰色绸"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#d6bb83" style="--swatch:#d6bb83" aria-label="淡黄色绸" title="淡黄色绸"></button>
+                <button type="button" class="fabric-swatch" data-fabric-color="#73867d" style="--swatch:#73867d" aria-label="黛绿色绸" title="黛绿色绸"></button>
+              </div>
               </div>
             </div>
             <div class="fabric-material-section">
               <h3>伞面材质</h3>
               <div class="fabric-style" role="group" aria-label="西湖绸伞伞面材质">
-                <button type="button" class="style-chip is-active" data-fabric-material="georgette" title="乔其纱：轻薄细织，柔和透光；不会改变伞面作品图案">乔其纱</button>
-                <button type="button" class="style-chip" data-fabric-material="plainSilk" title="平纹绸：柔韧细密，呈现克制的丝织质感；不会改变伞面作品图案">平纹绸</button>
-                <button type="button" class="style-chip" data-fabric-material="denseSilk" title="密织绸：织理更紧密、垂坠稍稳，采用柔和漫反射；不会更换作品图案">密织绸</button>
+                <button type="button" class="style-chip is-active" data-fabric-material="georgette" title="乔其纱：轻薄细织，柔和透光；不会改变伞面作品图案">乔其纱<small>轻薄透光</small></button>
+                <button type="button" class="style-chip" data-fabric-material="plainSilk" title="电力纺：平纹真丝，质地细密平滑，带柔和丝光">电力纺<small>平滑柔光</small></button>
+                <button type="button" class="style-chip" data-fabric-material="denseSilk" title="密织真丝：组织细密，光泽更含蓄，透光较柔和">密织真丝<small>细密柔韧</small></button>
               </div>
+              <p class="fabric-material-description" id="fabricMaterialDescription" aria-live="polite">乔其纱轻盈微皱，透光柔和，呈现薄纱的朦胧感。</p>
             </div>
           </div>
         </section>
       </aside>
+          </div>
+          <div class="studio-scroll-shadow" aria-hidden="true"></div>
+          <div class="studio-scroll-curl" aria-hidden="true"></div>
+          <div class="studio-scroll-highlight" aria-hidden="true"></div>
+          <button class="studio-scroll-toggle" id="studioPanelToggle" type="button" aria-controls="studioControls" aria-expanded="true" aria-label="收起创作工具"><span class="studio-scroll-label" aria-hidden="true">收卷</span></button>
+        </div>
+      </div>
     </main>
   </div>
   </section>
@@ -515,6 +495,6 @@
   <div class="ink-transition" id="inkTransition" aria-hidden="true">
     <div class="ink-transition-canvas-host" id="inkTransitionCanvas"></div>
   </div>
-  <script type="module" src="js/main.js?v=20261102-lake-silk-v23"></script>
+  <script type="module" src="js/main.js?v=20261111-lantern-default-v1"></script>
 </body>
 </html>

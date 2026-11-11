@@ -21,6 +21,7 @@ export class ArtworkDocument {
   }
 
   commit() {
+    if (this.suspendHistory) return;
     this.pushHistory(this.snapshot());
     this.future.length = 0;
     this.futureBytes = 0;

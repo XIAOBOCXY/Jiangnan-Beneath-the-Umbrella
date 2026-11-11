@@ -1,4 +1,4 @@
-import { getMotifAsset, getMotifAssetURL, MOTIF_CATEGORIES, MOTIF_LIBRARY } from "../drawing/MotifLibrary.js?v=20261031-studio-silk-v8";
+import { getMotifAsset, getMotifAssetURL, MOTIF_CATEGORIES, MOTIF_LIBRARY } from "../drawing/MotifLibrary.js?v=20261111-motif-counts-v5";
 
 // ControlManager 维护界面控件与显示值，不直接操作 Canvas。
 export class ControlManager {
@@ -13,10 +13,12 @@ export class ControlManager {
     ];
     this.elements = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
     this.patternStoryHomeParent = this.elements.patternStory?.parentElement || null;
-    this.fabricColor = "#718c7d";
+    this.fabricColor = "#8aa79b";
     this.fabricMaterial = "georgette";
-    this.pattern = "flower-birds";
-    this.activePatternCategory = getMotifAsset(this.pattern)?.categoryId || MOTIF_CATEGORIES[0].id;
+    this.pattern = "";
+    this.activePatternCategory = MOTIF_CATEGORIES[0].id;
+    this.patternPage = 0;
+    this.patternPageSize = 15;
     this.patternStoryAnimation = null;
     this.patternStoryToken = 0;
     this.patternStoryDistance = 0;
@@ -68,7 +70,11 @@ export class ControlManager {
     const container = this.elements.patternCategoryTabs;
     if (!container) return;
     container.replaceChildren();
-    MOTIF_CATEGORIES.forEach((category) => {
+    const availableCategories = MOTIF_CATEGORIES.filter((category) =>
+      MOTIF_LIBRARY.some((asset) => !asset.legacy && asset.categoryId === category.id)
+    );
+    container.style.setProperty("--pattern-category-count", String(availableCategories.length));
+    availableCategories.forEach((category) => {
       const tab = document.createElement("button");
       tab.type = "button";
       tab.className = "pattern-category";
@@ -86,15 +92,15 @@ export class ControlManager {
     container.addEventListener("keydown", (event) => {
       const tab = event.target.closest("[data-category]");
       if (!tab) return;
-      const index = MOTIF_CATEGORIES.findIndex((category) => category.id === tab.dataset.category);
+      const index = availableCategories.findIndex((category) => category.id === tab.dataset.category);
       let nextIndex = index;
-      if (event.key === "ArrowRight") nextIndex = (index + 1) % MOTIF_CATEGORIES.length;
-      else if (event.key === "ArrowLeft") nextIndex = (index - 1 + MOTIF_CATEGORIES.length) % MOTIF_CATEGORIES.length;
+      if (event.key === "ArrowRight") nextIndex = (index + 1) % availableCategories.length;
+      else if (event.key === "ArrowLeft") nextIndex = (index - 1 + availableCategories.length) % availableCategories.length;
       else if (event.key === "Home") nextIndex = 0;
-      else if (event.key === "End") nextIndex = MOTIF_CATEGORIES.length - 1;
+      else if (event.key === "End") nextIndex = availableCategories.length - 1;
       else return;
       event.preventDefault();
-      const nextCategory = MOTIF_CATEGORIES[nextIndex];
+      const nextCategory = availableCategories[nextIndex];
       this.setPatternCategory(nextCategory.id);
       container.querySelector(`[data-category="${nextCategory.id}"]`)?.focus();
     });
@@ -115,14 +121,8 @@ export class ControlManager {
   }
 
   placePatternStory() {
-    const { patternStory, patternCategoryTabs } = this.elements;
+    const { patternStory } = this.elements;
     if (!patternStory) return;
-    const patternGroup = patternCategoryTabs?.closest(".pattern-group");
-    if (window.matchMedia?.("(max-width: 680px)").matches && patternGroup) {
-      const categoryRow = patternGroup.querySelector(".pattern-category-row");
-      if (patternStory.parentElement !== patternGroup) patternGroup.insertBefore(patternStory, categoryRow || patternGroup.firstChild);
-      return;
-    }
     if (this.patternStoryHomeParent && patternStory.parentElement !== this.patternStoryHomeParent) {
       const canvasStage = this.patternStoryHomeParent.querySelector("#canvasStage");
       this.patternStoryHomeParent.insertBefore(patternStory, canvasStage || null);
@@ -146,15 +146,13 @@ export class ControlManager {
     patternStory.hidden = false;
     patternStoryCategory.textContent = MOTIF_CATEGORIES.find((category) => category.id === asset.categoryId)?.name || "纹样";
     patternStoryTitle.textContent = asset.name;
-    patternStoryMeaning.textContent = asset.meaning || asset.description || "这是一枚用于伞面装饰的传统题材纹样。";
+    const passages = [asset.description, asset.meaning, asset.knowledge].filter(Boolean);
+    patternStoryMeaning.textContent = [...new Set(passages)].join("\n") + "\n在伞面上，可以调整纹样的大小、方向与位置；将它靠近伞心可形成视觉重心，沿外圈排列则能与伞骨和圆形伞缘相互呼应。";
 
     const token = this.patternStoryToken;
     const prefersReducedMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
     requestAnimationFrame(() => {
       if (token !== this.patternStoryToken || patternStory.hidden) return;
-      if (window.matchMedia?.("(max-width: 680px)").matches) {
-        patternStory.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion ? "auto" : "smooth" });
-      }
       patternStory.classList.add("is-visible");
       const distance = patternStoryCopy.scrollHeight - patternStoryWindow.clientHeight;
       if (!prefersReducedMotion && distance > 8) {
@@ -222,42 +220,19 @@ export class ControlManager {
   enablePatternCarouselDrag() {
     const rail = this.elements.patternCarousel;
     if (!rail) return;
-
-    let pointerId = null;
-    let startX = 0;
-    let startScrollLeft = 0;
-    let didDrag = false;
+    let start = null;
     let suppressClick = false;
-
-    rail.addEventListener("pointerdown", (event) => {
-      if (event.pointerType !== "mouse" || event.button !== 0) return;
-      pointerId = event.pointerId;
-      startX = event.clientX;
-      startScrollLeft = rail.scrollLeft;
-      didDrag = false;
+    rail.addEventListener("pointerdown", (event) => { start = { x: event.clientX, y: event.clientY, id: event.pointerId }; });
+    rail.addEventListener("pointerup", (event) => {
+      if (!start || start.id !== event.pointerId) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      start = null;
+      if (Math.abs(dx) < 45 || Math.abs(dx) <= Math.abs(dy)) return;
+      suppressClick = true;
+      this.setPatternPage(this.patternPage + (dx < 0 ? 1 : -1));
+      window.setTimeout(() => { suppressClick = false; }, 0);
     });
-
-    window.addEventListener("pointermove", (event) => {
-      if (event.pointerId !== pointerId) return;
-      const deltaX = event.clientX - startX;
-      if (Math.abs(deltaX) > 4) {
-        didDrag = true;
-        rail.classList.add("is-dragging");
-        rail.scrollLeft = startScrollLeft - deltaX;
-      }
-    });
-
-    const finishDrag = (event) => {
-      if (event.pointerId !== pointerId) return;
-      pointerId = null;
-      rail.classList.remove("is-dragging");
-      if (didDrag) {
-        suppressClick = true;
-        window.setTimeout(() => { suppressClick = false; }, 0);
-      }
-    };
-    window.addEventListener("pointerup", finishDrag);
-    window.addEventListener("pointercancel", finishDrag);
     rail.addEventListener("click", (event) => {
       if (!suppressClick) return;
       event.preventDefault();
@@ -269,6 +244,7 @@ export class ControlManager {
   setPatternCategory(categoryId) {
     if (!MOTIF_CATEGORIES.some((category) => category.id === categoryId)) return false;
     this.activePatternCategory = categoryId;
+    this.patternPage = 0;
     this.updatePatternCategoryTabs();
     this.renderPatternCards();
     if (this.elements.patternCarousel) this.elements.patternCarousel.scrollLeft = 0;
@@ -281,7 +257,9 @@ export class ControlManager {
     if (!container) return;
     container.replaceChildren();
     const assets = MOTIF_LIBRARY.filter((asset) => !asset.legacy && asset.categoryId === this.activePatternCategory);
-    assets.forEach((asset) => {
+    const pages = Math.max(1, Math.ceil(assets.length / this.patternPageSize));
+    this.patternPage = Math.min(this.patternPage, pages - 1);
+    assets.slice(this.patternPage * this.patternPageSize, (this.patternPage + 1) * this.patternPageSize).forEach((asset) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "pattern-card";
@@ -289,7 +267,7 @@ export class ControlManager {
       button.setAttribute("role", "option");
       button.setAttribute("aria-selected", String(asset.id === this.pattern));
       button.title = asset.name;
-      button.setAttribute("aria-label", `${asset.name}，查看纹样含义与来源并开始放置`);
+      button.setAttribute("aria-label", `${asset.name}，查看纹样并开始放置`);
 
       const imageFrame = document.createElement("span");
       imageFrame.className = "pattern-image";
@@ -313,6 +291,29 @@ export class ControlManager {
       }
       container.append(button);
     });
+    const indicators = document.getElementById("patternPageIndicators");
+    if (indicators) {
+      indicators.replaceChildren();
+      indicators.hidden = pages <= 1;
+      for (let index = 0; index < pages; index += 1) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "pattern-page-indicator";
+        button.setAttribute("aria-label", `第 ${index + 1} 页，共 ${pages} 页`);
+        button.setAttribute("aria-current", index === this.patternPage ? "page" : "false");
+        button.addEventListener("click", () => this.setPatternPage(index));
+        indicators.append(button);
+      }
+    }
+  }
+
+  setPatternPage(page) {
+    const count = MOTIF_LIBRARY.filter((asset) => !asset.legacy && asset.categoryId === this.activePatternCategory).length;
+    const next = Math.max(0, Math.min(Math.max(0, Math.ceil(count / this.patternPageSize) - 1), page));
+    if (next === this.patternPage) return;
+    this.patternPage = next;
+    this.renderPatternCards();
+    this.updatePatternSelection();
   }
 
   setAssetStates(drawer) {
@@ -329,7 +330,7 @@ export class ControlManager {
 
   updateValueDisplays() {
     this.elements.brushSizeValue.textContent = this.elements.brushSize.value;
-    this.elements.opacityValue.textContent = `${this.elements.opacity.value}%`;
+    this.elements.opacityValue.textContent = this.elements.opacity.value;
     this.elements.segmentsValue.textContent = `${this.elements.segments.value} 重`;
     const mirrorDisabled = Number(this.elements.segments.value) <= 1;
     this.elements.mirror.disabled = mirrorDisabled;
@@ -385,9 +386,24 @@ export class ControlManager {
       currentColor.setAttribute("aria-label", `当前颜色 ${color}`);
     }
     document.querySelectorAll("[data-fabric-color]").forEach((button) => button.classList.toggle("is-active", button.dataset.fabricColor.toLowerCase() === this.fabricColor.toLowerCase()));
+    const currentFabric = document.getElementById("currentFabricColor");
+    if (currentFabric) {
+      currentFabric.style.setProperty("--current-brush-color", this.fabricColor);
+      currentFabric.title = `当前伞面颜色 ${this.fabricColor}`;
+    }
+    const picker = document.getElementById("fabricColorPicker");
+    if (picker && picker.value.toLowerCase() !== this.fabricColor.toLowerCase()) picker.value = this.fabricColor;
   }
 
-  updateFabricMaterials() { document.querySelectorAll("[data-fabric-material]").forEach((button) => button.classList.toggle("is-active", button.dataset.fabricMaterial === this.fabricMaterial)); }
+  updateFabricMaterials() {
+    document.querySelectorAll("[data-fabric-material]").forEach((button) => { const selected = button.dataset.fabricMaterial === this.fabricMaterial; button.classList.toggle("is-active", selected); button.setAttribute("aria-pressed", String(selected)); });
+    const description = document.getElementById("fabricMaterialDescription");
+    if (description) description.textContent = {
+      georgette: "乔其纱轻盈微皱，透光柔和，呈现薄纱的朦胧感。",
+      plainSilk: "电力纺以平纹织成，绸面细滑，光线下带有温润丝光。",
+      denseSilk: "密织真丝组织紧密、触感柔韧，反光更集中，透光较少。"
+    }[this.fabricMaterial];
+  }
   setBrushColor(color) { this.elements.colorPicker.value = color; this.updateSwatches(); }
   setFabricColor(color) { this.fabricColor = color; this.updateSwatches(); }
 
@@ -396,6 +412,8 @@ export class ControlManager {
     if (!asset || ["missing", "invalid"].includes(this.assetStates.get(pattern))) return false;
     this.pattern = pattern;
     if (asset.categoryId !== this.activePatternCategory) this.setPatternCategory(asset.categoryId);
+    const index = MOTIF_LIBRARY.filter((item) => !item.legacy && item.categoryId === this.activePatternCategory).findIndex((item) => item.id === pattern);
+    if (index >= 0 && Math.floor(index / this.patternPageSize) !== this.patternPage) this.setPatternPage(Math.floor(index / this.patternPageSize));
     this.updatePatternSelection();
     return true;
   }
@@ -413,8 +431,10 @@ export class ControlManager {
   getSettings() {
     return {
       color: this.elements.colorPicker.value,
-      brushSize: Number(this.elements.brushSize.value),
-      opacity: Number(this.elements.opacity.value) / 100,
+      // UI steps are perceptual, while the document keeps physical brush sizes
+      // so existing saved strokes and their replay remain unchanged.
+      brushSize: 4 + (Number(this.elements.brushSize.value) - 1) * 10,
+      opacity: Number(this.elements.opacity.value) / 10,
       segments: Number(this.elements.segments.value),
       mirror: this.elements.mirror.checked,
       brushStyle: document.querySelector("[data-brush-style].is-active")?.dataset.brushStyle || "soft",
@@ -424,19 +444,23 @@ export class ControlManager {
     };
   }
 
-  randomize() {
+  randomize(excludedPatterns = []) {
     const colors = ["#b96e68", "#537c7e", "#bfa37a", "#263f3a", "#f1eee5"];
-    const fabricColors = ["#718c7d", "#d3c6ac", "#7393a3", "#879779", "#c68f91", "#c6a766", "#587063"];
+    const fabricColors = ["#8aa79b", "#d9cdb8", "#91acb8", "#9caf8e", "#d0a0a5", "#d6bb83", "#73867d"];
     const selectable = MOTIF_LIBRARY.filter((asset) => !asset.legacy);
     const available = selectable.filter((asset) => this.assetStates.get(asset.id) === "ready");
     const patterns = (available.length ? available : selectable).map((asset) => asset.id);
     const materials = ["georgette", "plainSilk", "denseSilk"];
     const pick = (items) => items[Math.floor(Math.random() * items.length)];
+    const excluded = new Set([this.pattern, ...excludedPatterns]);
+    const alternatives = patterns.filter((pattern) => !excluded.has(pattern));
+    const nextPattern = pick(alternatives.length ? alternatives : patterns);
     this.setBrushColor(pick(colors)); this.setFabricColor(pick(fabricColors));
-    this.elements.brushSize.value = String(Math.floor(Math.random() * 5) + 6);
-    this.elements.opacity.value = String(Math.floor(Math.random() * 21) + 40);
+    this.elements.brushSize.value = String(Math.floor(Math.random() * 3) + 1);
+    this.elements.opacity.value = String(Math.floor(Math.random() * 3) + 4);
     this.elements.segments.value = String([6, 8, 12][Math.floor(Math.random() * 3)]);
     this.elements.mirror.checked = true;
-    this.setPattern(pick(patterns)); this.setFabricMaterial(pick(materials)); this.updateValueDisplays();
+    this.setPattern(nextPattern); this.setFabricMaterial(pick(materials)); this.updateValueDisplays();
+    return nextPattern;
   }
 }
