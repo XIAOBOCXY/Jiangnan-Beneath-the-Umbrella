@@ -11361,3 +11361,53 @@ html[data-site-page="studio"] .studio-page .control-panel { -webkit-backdrop-fil
   display: none !important;
   content: none !important;
 }
+
+/* Match the approved 1920 x 911 local view at 150% browser zoom using the
+   page's default layout: a 21px unit, 472.5px scroll, and 231px view switch.
+   The canopy retains its dvh sizing; narrower desktops keep a readable UI. */
+@media (min-width: 981px) {
+  html {
+    font-size: clamp(100%, min(1.111111vw, 2.305159dvh), 225%);
+  }
+
+  .studio-page { --studio-scroll-width: 22.5rem; }
+
+  .home-page .home-copy h1 { font-size: min(7.3rem, 8.1vw); }
+  .home-page { --home-copy-size: 1.36rem; }
+  .home-page .home-composition {
+    width: 100%;
+    max-width: 112rem;
+    margin-inline: auto;
+  }
+
+  /* Replace the old 15px navigation and vw-sized book copy with the same
+     rem scale already used by the studio and gallery controls. */
+  .heritage-page .heritage-page-nav > a,
+  .studio-page .studio-floating-nav > a,
+  .hanging-gallery .hanging-gallery-nav > :is(a, button) {
+    font-size: 1.07rem !important;
+  }
+  .heritage-page .heritage-cover-page h1 { font-size: 2.75rem !important; }
+  .heritage-page .heritage-page-content { padding-block: 2.4rem !important; }
+  .heritage-page .heritage-page-content h2 { font-size: 1.55rem !important; }
+  .heritage-page .heritage-cover-page > p:not(.heritage-kicker),
+  .heritage-page .heritage-page-content p:not(.heritage-kicker) {
+    font-size: .9rem !important;
+  }
+  .heritage-page .heritage-page-content .heritage-kicker { font-size: .79rem !important; }
+  .heritage-page .heritage-stage-map small { font-size: .82rem; }
+}
+
+@media (min-width: 981px) and (max-width: 1199px) {
+  .studio-page .canvas-status {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "fold fold fold" "view audio save";
+  }
+  .studio-page .canvas-container:not(.is-3d) .canvas-status {
+    grid-template-areas: "fold fold fold" "view audio save";
+  }
+  .studio-page .viewer-fold-control { width: min(100%, 22rem); min-width: 0; }
+  .studio-page .view-switch { width: min(11rem, 100%); min-width: 0; }
+  .studio-page .audio-reactive-button,
+  .studio-page .studio-save-button { width: auto; min-width: 0; }
+}

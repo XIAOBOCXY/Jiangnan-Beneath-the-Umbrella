@@ -2,7 +2,7 @@
 // Versioned import prevents an older cached controller from surviving a UI
 // change where control IDs have changed.
 import { App } from "./app/App.js?v=20261111-lantern-default-v1";
-import { SiteExperience } from "./site/SiteExperience.js?v=20261111-lantern-default-v1";
+import { SiteExperience } from "./site/SiteExperience.js?v=20261111-responsive-scale-v1";
 import { HomeLakeScene } from "./site/HomeLakeScene.js?v=20261028-inkfield-v39";
 import { InkTransition } from "./site/InkTransition.js?v=20261106-studio-paper-v3";
 import { InkWashBackground } from "./ui/InkWashBackground.js?v=20261110-paper-scroll-v4";

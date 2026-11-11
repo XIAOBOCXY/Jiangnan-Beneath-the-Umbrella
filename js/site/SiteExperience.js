@@ -72,6 +72,12 @@ export class SiteExperience {
       if (this.page === "gallery") this.refreshGallery();
     }).catch((error) => console.warn("作品工坊初始化失败：", error));
     window.addEventListener("popstate", () => this.showPage(this.routeFromHash(), false));
+    // Mobile pages can scroll below the canvas. Returning to the desktop's
+    // fixed-height exhibit must not retain that off-screen scroll position.
+    this.desktopLayoutQuery = window.matchMedia("(min-width: 981px)");
+    this.desktopLayoutQuery.addEventListener("change", (event) => {
+      if (event.matches) window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    });
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !document.getElementById("galleryFocus").hidden) this.closeGalleryFocus();
     });
