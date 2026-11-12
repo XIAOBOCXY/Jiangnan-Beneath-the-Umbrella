@@ -11353,7 +11353,7 @@ html[data-site-page="studio"] .studio-page .control-panel { -webkit-backdrop-fil
 }
 .studio-page .brush-style-row .style-chip.is-active {
   background: transparent !important;
-  border-color: transparent !important;
+  border-color: rgba(77, 119, 108, .56) !important;
   color: #466f66 !important;
   box-shadow: none !important;
 }

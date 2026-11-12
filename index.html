@@ -16,7 +16,7 @@
   </script>
   <link rel="preload" href="assets/fonts/AlimamaDaoLiTi-full.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="assets/fonts/ChillHuoKai-site.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=20261112-book-gallery-v1">
+  <link rel="stylesheet" href="styles.css?v=20261112-brush-selection-v1">
 </head>
 <body>
   <div class="paper-grain" aria-hidden="true"></div>
@@ -396,10 +396,10 @@
 
         <section class="control-group brush-group" id="brushTools">
           <div class="brush-style-row" role="group" aria-label="笔触风格">
-            <button type="button" class="style-chip is-active" data-brush-style="soft">柔墨</button>
-            <button type="button" class="style-chip" data-brush-style="texture">纤维笔</button>
-            <button type="button" class="style-chip" data-brush-style="clean">清晰</button>
-            <button type="button" class="style-chip" data-brush-style="fluid">水墨生成</button>
+            <button type="button" class="style-chip is-active" data-brush-style="soft" aria-pressed="true">柔墨</button>
+            <button type="button" class="style-chip" data-brush-style="texture" aria-pressed="false">纤维笔</button>
+            <button type="button" class="style-chip" data-brush-style="clean" aria-pressed="false">清晰</button>
+            <button type="button" class="style-chip" data-brush-style="fluid" aria-pressed="false">水墨生成</button>
           </div>
           <div class="brush-color-layout">
             <div class="current-brush-color" aria-label="当前笔触颜色">
