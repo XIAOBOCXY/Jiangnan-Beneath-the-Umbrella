@@ -1,7 +1,7 @@
 import { radialCopyTransforms } from "./RadialSymmetry.js?v=20261112-symmetry-v1";
 
 // MandalaRenderer 同时渲染平滑的放射笔迹和独立可编辑的纹样对象。
-import { ArtworkDocument } from "./ArtworkDocument.js?v=20261111-inspiration-batch-v2";
+import { ArtworkDocument } from "./ArtworkDocument.js?v=20261112-artwork-order-v1";
 import { CompositionZones } from "./CompositionZones.js";
 
 const uid = () => `motif-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -33,16 +33,19 @@ export class MandalaRenderer {
   }
 
   beginStroke(point, settings) {
+    this.onBeforeDocumentChange?.();
     this.document.commit();
     // All freehand presets share the same live GPU ink head. Source points and
     // UV segments remain in the document so history can rebuild the pigment.
     const stroke = {
       id: uid(),
+      order: this.document.nextOrder(),
       points: [{ ...point, pressure: settings.pressureFactor || 1 }],
       settings: { ...settings, gpuInk: settings.gpuInk !== false }
     };
     if (stroke.settings.gpuInk || settings.brushStyle === "fluid") stroke.fluidSplats = [];
     this.document.strokes.push(stroke);
+    if (stroke.settings.gpuInk || settings.brushStyle === "fluid") this.onInkStrokeCreated?.(stroke);
     this.dirty.strokes = true;
     this.render({ markTexture: !stroke.settings.gpuInk && settings.brushStyle !== "fluid" });
     return stroke;
@@ -75,7 +78,7 @@ export class MandalaRenderer {
     const previous = stroke.points[stroke.points.length - 1];
     if (Math.hypot(point.x - previous.x, point.y - previous.y) < .8) return;
     stroke.points.push({ ...point, pressure: settings.pressureFactor || 1 });
-    this.dirty.strokes = true;
+    if (!stroke.settings.gpuInk && stroke.settings.brushStyle !== "fluid") this.dirty.strokes = true;
     this.render({ markTexture: !stroke.settings.gpuInk && stroke.settings.brushStyle !== "fluid" });
   }
 
@@ -130,9 +133,10 @@ export class MandalaRenderer {
     const position = insideCanopy && settings.snap ? this.zones.snap(point, zone) : point;
     const baseSize = asset.recommendedSize;
     const scale = insideCanopy ? this.zones.limitScale(1, zone, baseSize) : 1;
+    this.onBeforeDocumentChange?.();
     this.document.commit();
     const object = {
-      id: uid(), patternId, x: position.x, y: position.y,
+      id: uid(), order: this.document.nextOrder(), patternId, x: position.x, y: position.y,
       scale, rotation: 0, repeatCount: asset.defaultRepeatCount, repeatRadius: 0,
       repeatMode: "single", repeatAngle: 0, repeatOrientation: "original",
       opacity: .88, zone: zone.name, baseSize
@@ -474,23 +478,27 @@ export class MandalaRenderer {
   }
 
   setDocument(data, record = true) {
+    this.onBeforeDocumentChange?.();
     if (record) this.document.commit();
     this.reveal.clear();
     this.document.strokes = cloneData(data.strokes || []);
     this.document.patterns = cloneData(data.patterns || []);
+    this.document.normalizeOrder();
     this.document.selectedId = null;
     this.invalidate();
     this.render();
   }
 
   getDocument() {
+    this.document.normalizeOrder();
     return { strokes: cloneData(this.document.strokes), patterns: cloneData(this.document.patterns) };
   }
 
-  undo() { const changed = this.document.undo(); if (changed) { this.reveal.clear(); this.invalidate(); this.render(); } return changed; }
-  redo() { const changed = this.document.redo(); if (changed) { this.reveal.clear(); this.invalidate(); this.render(); } return changed; }
+  undo() { if (!this.document.history.length) return false; this.onBeforeDocumentChange?.(); const changed = this.document.undo(); if (changed) { this.reveal.clear(); this.invalidate(); this.render(); } return changed; }
+  redo() { if (!this.document.future.length) return false; this.onBeforeDocumentChange?.(); const changed = this.document.redo(); if (changed) { this.reveal.clear(); this.invalidate(); this.render(); } return changed; }
 
   clear() {
+    this.onBeforeDocumentChange?.();
     this.document.clear();
     this.reveal.clear();
     this.invalidate();
@@ -742,19 +750,36 @@ export class MandalaRenderer {
 
   render({ markTexture = true } = {}) {
     if (this.isBatching) return;
-    const { artCtx, patternCtx, overlayCtx } = this.canvasManager;
-    const artworkChanged = this.dirty.strokes || this.dirty.patterns;
-    if (this.dirty.strokes) {
-      artCtx.clearRect(0, 0, this.canvasManager.size, this.canvasManager.size);
-      this.document.strokes.forEach((stroke) => this.drawStroke(artCtx, stroke));
-      this.dirty.strokes = false;
-    }
-    if (this.dirty.patterns) {
-      patternCtx.clearRect(0, 0, this.canvasManager.size, this.canvasManager.size);
-      this.document.patterns.forEach((object) => {
-        this.drawPattern(patternCtx, object);
-      });
-      this.dirty.patterns = false;
+    const { artCtx, artSurfaceCtx, patternCtx, overlayCtx, size } = this.canvasManager;
+    const artworkChanged = this.dirty.strokes || this.dirty.patterns || this.surfaceVersion !== this.canvasManager.surfaceVersion;
+    if (artworkChanged) {
+      artCtx.clearRect(0, 0, size, size);
+      artSurfaceCtx.clearRect(0, 0, size, size);
+      const layers = this.document.getLayers();
+      for (let index = 0; index < layers.length; index++) {
+        const { kind, item } = layers[index];
+        if (kind === "pattern") {
+          patternCtx.clearRect(0, 0, size, size);
+          this.drawPattern(patternCtx, item);
+          this.canvasManager.preparePatternSurface();
+          for (const [ctx, source] of [[artCtx, this.canvasManager.patternLayer], [artSurfaceCtx, this.canvasManager.patternSurfaceLayer]]) {
+            ctx.save(); ctx.globalAlpha = .9;
+            ctx.drawImage(source, 0, 0, size, size); ctx.restore();
+          }
+        } else if (kind === "ink") {
+          const strokes = [item];
+          while (layers[index + 1]?.kind === "ink") strokes.push(layers[++index].item);
+          const ink = this.getInkCanvas?.(strokes);
+          if (!ink) continue;
+          const { center, radius } = this.canvasManager;
+          for (const ctx of [artCtx, artSurfaceCtx]) ctx.drawImage(ink, center.x - radius, center.y - radius, radius * 2, radius * 2);
+        } else {
+          this.drawStroke(artCtx, item);
+          this.drawStroke(artSurfaceCtx, item);
+        }
+      }
+      this.surfaceVersion = this.canvasManager.surfaceVersion;
+      this.dirty.strokes = this.dirty.patterns = false;
     }
     overlayCtx.clearRect(0, 0, this.canvasManager.size, this.canvasManager.size);
     if (this.showGuides) this.zones.drawGuides(overlayCtx);

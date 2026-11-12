@@ -5,6 +5,8 @@ const MAX_HISTORY_STEPS = 40;
 const MAX_HISTORY_BYTES = 16 * 1024 * 1024;
 const estimateBytes = (snapshot) => snapshot.length * 2;
 
+export const isGpuStroke = (stroke) => stroke.settings?.gpuInk === true || stroke.settings?.brushStyle === "fluid";
+
 export class ArtworkDocument {
   constructor() {
     this.strokes = [];
@@ -17,7 +19,35 @@ export class ArtworkDocument {
   }
 
   snapshot() {
+    this.normalizeOrder();
     return JSON.stringify({ strokes: this.strokes, patterns: this.patterns });
+  }
+
+  normalizeOrder() {
+    const items = [...this.strokes, ...this.patterns];
+    const ordered = items.filter((item) => Number.isFinite(item.order));
+    // Old documents never recorded interleaving. Retain their former stack:
+    // Canvas paths, motifs, then GPU pigment, before appending new work.
+    const missing = ordered.length ? items : [
+      ...this.strokes.filter((stroke) => !isGpuStroke(stroke)),
+      ...this.patterns,
+      ...this.strokes.filter(isGpuStroke)
+    ];
+    let order = ordered.reduce((max, item) => Math.max(max, item.order), -1) + 1;
+    missing.forEach((item) => { if (!Number.isFinite(item.order)) item.order = order++; });
+  }
+
+  nextOrder() {
+    this.normalizeOrder();
+    return [...this.strokes, ...this.patterns].reduce((max, item) => Math.max(max, item.order), -1) + 1;
+  }
+
+  getLayers() {
+    this.normalizeOrder();
+    return [
+      ...this.strokes.map((item) => ({ kind: isGpuStroke(item) ? "ink" : "stroke", item })),
+      ...this.patterns.map((item) => ({ kind: "pattern", item }))
+    ].sort((a, b) => a.item.order - b.item.order);
   }
 
   commit() {
@@ -56,6 +86,7 @@ export class ArtworkDocument {
     const data = JSON.parse(state);
     this.strokes = data.strokes || [];
     this.patterns = data.patterns || [];
+    this.normalizeOrder();
     this.selectedId = null;
   }
 

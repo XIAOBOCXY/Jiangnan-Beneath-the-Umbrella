@@ -47,7 +47,7 @@ export class CanvasManager {
   }
 
   createLayers() {
-    ["base", "art", "pattern", "patternSurface", "relief", "atmosphere", "structure", "sheen", "overlay"].forEach((name) => {
+    ["base", "art", "artSurface", "pattern", "patternSurface", "relief", "atmosphere", "structure", "sheen", "overlay"].forEach((name) => {
       const canvasLayer = document.createElement("canvas");
       const ctx = canvasLayer.getContext("2d");
       this.layers[name] = { canvas: canvasLayer, ctx };
@@ -162,6 +162,7 @@ export class CanvasManager {
   containsWorkspacePoint(point) { return Math.hypot(point.x - CENTER, point.y - CENTER) <= SIZE / 2 - 10; }
 
   renderBase(settings = DEFAULT_SETTINGS, { deferRender = false } = {}) {
+    this.surfaceVersion = (this.surfaceVersion || 0) + 1;
     this.lastSettings = { ...this.lastSettings, ...settings };
     const ctx = this.baseCtx;
     ctx.clearRect(0, 0, SIZE, SIZE);
@@ -200,6 +201,7 @@ export class CanvasManager {
     this.renderAtmosphereLayer();
     this.renderSilkSheenLayer();
     this.renderStructure();
+    this.onBaseChange?.();
     if (!deferRender) {
       this.renderScene();
       this.markTextureDirty();
@@ -518,10 +520,7 @@ export class CanvasManager {
   renderScene(includeOverlay = true) {
     this.ctx.clearRect(0, 0, SIZE, SIZE);
     this.ctx.drawImage(this.baseLayer, 0, 0, SIZE, SIZE);
-    this.ctx.drawImage(this.artLayer, 0, 0, SIZE, SIZE);
-    this.preparePatternSurface();
-    this.ctx.save(); this.ctx.globalAlpha = .9;
-    this.ctx.drawImage(this.patternSurfaceLayer, 0, 0, SIZE, SIZE); this.ctx.restore();
+    this.ctx.drawImage(this.artSurfaceLayer, 0, 0, SIZE, SIZE);
     this.ctx.save(); this.ctx.globalAlpha = .48;
     this.ctx.globalCompositeOperation = "source-atop";
     this.drawSilkWeave(this.ctx, this.lastSettings.fabricMaterial || DEFAULT_SETTINGS.fabricMaterial);
@@ -565,10 +564,6 @@ export class CanvasManager {
       0, 0, TEXTURE_SIZE, TEXTURE_SIZE
     );
     drawArtworkLayer(this.artLayer);
-    context.save();
-    context.globalAlpha = 0.90;
-    drawArtworkLayer(this.patternLayer);
-    context.restore();
     // The fiber passes over pigment as well as untouched silk. Keeping the
     // pigment in source-over mode also preserves white painted petals.
     this.drawTextureSilkWeave(context, this.lastSettings.fabricMaterial || DEFAULT_SETTINGS.fabricMaterial);
@@ -637,12 +632,10 @@ export class CanvasManager {
   createExportCanvas(options = {}) {
     const output = document.createElement("canvas"); output.width = Math.round(SIZE * this.dpr); output.height = Math.round(SIZE * this.dpr);
     const context = output.getContext("2d"); context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    this.preparePatternSurface();
-    const layerNames = ["baseLayer", "artLayer", "patternSurfaceLayer", "reliefLayer", "atmosphereLayer", "sheenLayer"];
+    const layerNames = ["baseLayer", "artSurfaceLayer", "reliefLayer", "atmosphereLayer", "sheenLayer"];
     if (options.includeStructure !== false) layerNames.push("structureLayer");
     layerNames.forEach((name) => {
       context.save();
-      if (name === "patternSurfaceLayer") { context.globalAlpha = .9; }
       if (name === "reliefLayer") { context.globalCompositeOperation = "multiply"; context.globalAlpha = .34; }
       if (name === "atmosphereLayer") { context.globalCompositeOperation = "multiply"; context.globalAlpha = .34; }
       if (name === "sheenLayer") { context.globalCompositeOperation = "screen"; context.globalAlpha = .22; }
@@ -672,5 +665,5 @@ export class CanvasManager {
     context.drawImage(source, 0, 0, 512, 512);
   }
 
-  clearArt() { this.artCtx.clearRect(0, 0, SIZE, SIZE); this.patternCtx.clearRect(0, 0, SIZE, SIZE); this.renderScene(); }
+  clearArt() { this.artCtx.clearRect(0, 0, SIZE, SIZE); this.artSurfaceCtx.clearRect(0, 0, SIZE, SIZE); this.patternCtx.clearRect(0, 0, SIZE, SIZE); this.renderScene(); }
 }

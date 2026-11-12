@@ -484,29 +484,52 @@ export class ThreeUmbrellaPreview {
   sealFluidMotion() { this.inkFluid?.sealMotion(); }
   injectFluidTest() { this.inkFluid?.injectTestSplat(); if (!this.frameHandle) this.setActive(true); }
 
-  captureFluidSnapshot() {
-    if (!this.inkFluid) return null;
+  captureFluidSnapshot(ink = this.inkFluid) {
+    if (!ink) return null;
     const mode = this.displayMode;
-    const debugMode = this.inkFluid.debugMode;
+    const debugMode = ink.debugMode;
+    const previousAspect = ink.aspect;
     const previousSize = this.renderer.getSize(new THREE.Vector2());
     const snapshot = document.createElement("canvas");
     snapshot.width = 512;
     snapshot.height = 512;
     try {
+      // Pointer-up and placement can happen before the next animation frame.
+      // Drain every queued segment before freezing its chronological layer.
+      while (ink.pendingSplats.length) ink.step(performance.now(), true);
       // Capture in the square canopy UV domain even when the visible 3D host
       // is a wide viewport; this keeps PNG/share snapshots from stretching.
       this.renderer.setSize(512, 512, false);
-      this.inkFluid.aspect = 1;
-      this.inkFluid.setDebugMode("composite");
-      this.inkFluid.renderOverlay();
+      ink.aspect = 1;
+      ink.setDebugMode("composite");
+      ink.renderOverlay();
       snapshot.getContext("2d").drawImage(this.renderer.domElement, 0, 0, 512, 512);
     } finally {
       this.renderer.setSize(previousSize.x, previousSize.y, false);
-      this.inkFluid.setDebugMode(debugMode);
+      ink.setDebugMode(debugMode);
+      ink.aspect = previousAspect;
       this.displayMode = mode;
       this.renderOnce();
     }
     return snapshot;
+  }
+
+  captureReplayedInk(splats) {
+    // Reuse one scratch simulation without disturbing the current wet stroke.
+    const ink = this.replayInkFluid ||= new InkFluidSystem(THREE, this.renderer);
+    try {
+      ink.clear();
+      // Process bounded batches so long strokes never hit the input queue cap.
+      for (let index = 0; index < splats.length; index += 64) {
+        ink.addSplats(splats.slice(index, index + 64));
+        ink.step(index / 64 * (1000 / 60) + 1, true);
+      }
+      ink.sealMotion();
+      return this.captureFluidSnapshot(ink);
+    } finally {
+      this.syncInkMaterials();
+      this.renderOnce();
+    }
   }
 
   clearFluid() {
@@ -1048,6 +1071,7 @@ export class ThreeUmbrellaPreview {
     await this.ambientMusic?.dispose();
     this.removeModel();
     this.inkFluid?.dispose();
+    this.replayInkFluid?.dispose();
     this.canvasTexture?.dispose();
     this.normalTexture?.dispose();
     this.roughnessTexture?.dispose();

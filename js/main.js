@@ -1,7 +1,7 @@
 // 页面入口只负责等待 DOM，并创建主应用对象。
 // Versioned import prevents an older cached controller from surviving a UI
 // change where control IDs have changed.
-import { App } from "./app/App.js?v=20261112-home-mobile-v1";
+import { App } from "./app/App.js?v=20261112-artwork-order-v1";
 import { SiteExperience } from "./site/SiteExperience.js?v=20261112-book-gallery-v1";
 import { HomeLakeScene } from "./site/HomeLakeScene.js?v=20261028-inkfield-v39";
 import { InkTransition } from "./site/InkTransition.js?v=20261106-studio-paper-v3";

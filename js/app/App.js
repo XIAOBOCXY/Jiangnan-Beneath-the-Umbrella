@@ -1,6 +1,7 @@
 import * as THREE from "three";
-import { CanvasManager } from "../core/CanvasManager.js?v=20261112-mobile-layout-v1";
-import { MandalaRenderer } from "../core/MandalaRenderer.js?v=20261112-symmetry-v1";
+import { CanvasManager } from "../core/CanvasManager.js?v=20261112-artwork-order-v1";
+import { MandalaRenderer } from "../core/MandalaRenderer.js?v=20261112-artwork-order-v1";
+import { InkArtworkLayers } from "../core/InkArtworkLayers.js?v=20261112-artwork-order-v1";
 import { radialCopyTransforms } from "../core/RadialSymmetry.js?v=20261112-symmetry-v1";
 import { PatternDrawer } from "../drawing/PatternDrawer.js?v=20261112-motif-v1";
 import { TemplateComposer } from "../features/TemplateComposer.js?v=20261111-empty-start-v10";
@@ -46,6 +47,19 @@ export class App {
     this.pendingFluidSplats = [];
     this.lastFluidPoint = null;
     this.fluidSealTimer = 0;
+    this.inkLayers = new InkArtworkLayers({
+      getPreview: () => this.threePreview,
+      replayStroke: (stroke) => this.replayInkStroke(stroke),
+      clearPending: () => {
+        window.clearTimeout(this.fluidSealTimer);
+        this.pendingFluidSplats.length = 0;
+        this.canvasManager.setFluidSnapshot(null);
+      }
+    });
+    this.renderer.onBeforeDocumentChange = () => this.inkLayers.freeze();
+    this.renderer.onInkStrokeCreated = (stroke) => this.inkLayers.begin(stroke);
+    this.renderer.getInkCanvas = (strokes) => this.inkLayers.getRunCanvas(strokes);
+    this.canvasManager.onBaseChange = () => this.renderer.render({ markTexture: false });
     this.canvasManager.onTextureDirty = () => this.refreshThreeTexture();
     // Keep the selected material swatch, 2D silk base and WebGL UV texture on
     // one initial color; otherwise the first 3D preview can inherit stale cloth.
@@ -268,7 +282,6 @@ export class App {
           }
         });
         const settings = { ...this.controls.getSettings(), gpuInk: true, brushStyle: "fluid", segments: 1, mirror: false };
-        const splats = [];
         for (let line = 0; line < 5; line += 1) {
           const angle = layoutAngle + line * Math.PI * 2 / 5 + (Math.random() - .5) * .25;
           const startRadius = .22 + Math.random() * .07;
@@ -284,13 +297,12 @@ export class App {
             previous = uv;
           }
           this.renderer.appendFluidSplats(stroke.id, lineSplats);
+          const paint = lineSplats.flatMap((splat) => this.expandInkSplat(splat, settings));
+          if (this.threePreview) this.threePreview.injectInks(paint);
+          else this.pendingFluidSplats.push(...paint);
           this.renderer.endStroke();
-          splats.push(...lineSplats);
         }
-        const paint = splats.flatMap((splat) => this.expandInkSplat(splat, settings));
-        if (this.threePreview) this.threePreview.injectInks(paint);
-        else {
-          this.pendingFluidSplats.push(...paint);
+        if (!this.threePreview) {
           // Initialization already drains the pending marks and sets up the
           // current host. Repeating those steps forced another render/resize.
           void this.ensureThreePreview().catch((error) => {
@@ -349,7 +361,7 @@ export class App {
   async ensureThreePreview() {
     if (this.threePreview) return this.threePreview;
     if (!this.fluidInitPromise) {
-      this.fluidInitPromise = import("../rendering/ThreeUmbrellaPreview.js?v=20261112-gzip-model-v1").then(({ ThreeUmbrellaPreview }) => {
+      this.fluidInitPromise = import("../rendering/ThreeUmbrellaPreview.js?v=20261112-artwork-order-v1").then(({ ThreeUmbrellaPreview }) => {
         const preview = new ThreeUmbrellaPreview(document.getElementById("threeHost"));
         preview.setFabricMaterial(this.controls.getSettings().fabricMaterial);
         preview.onFoldProgress = (progress) => this.updateFoldControls(progress);
@@ -359,6 +371,8 @@ export class App {
       preview.setPresentation(this.viewMode === "3d" ? "3d" : "fluid", this.viewMode === "3d" ? threeHost : fluidHost);
         preview.setFluidDebugMode("composite");
         preview.injectInks(this.pendingFluidSplats.splice(0));
+        this.renderer.invalidate();
+        this.renderer.render();
         preview.setActive(true);
         this.refreshThreeTexture(true);
         return preview;
@@ -414,7 +428,6 @@ export class App {
 
   saveCurrentArtwork() {
     const settings = { ...this.controls.getSettings() };
-    if (this.threePreview) this.canvasManager.setFluidSnapshot(this.threePreview.captureFluidSnapshot());
     return this.galleryStore.saveCanvas(
       this.createGalleryTextureCanvas(settings),
       this.renderer.getDocument(),
@@ -424,6 +437,7 @@ export class App {
   }
 
   createGalleryTextureCanvas(settings = this.controls.getSettings()) {
+    this.inkLayers.freeze();
     // Synchronize the source with the current editor before saving. A cached
     // UV canvas or the shared home/gallery preview can still hold an older dye.
     this.renderer.reveal.clear();
@@ -436,22 +450,7 @@ export class App {
     source.width = current.width;
     source.height = current.height;
     source.getContext("2d").drawImage(current, 0, 0);
-    if (this.threePreview?.inkFluid) {
-      try {
-        const composed = this.threePreview.captureStudioArtworkTexture(source);
-        if (composed) return composed;
-      } catch (error) { console.warn("三维伞面纹理合成失败，使用备用快照", error); }
-    }
-    const texture = document.createElement("canvas");
-    texture.width = source.width;
-    texture.height = source.height;
-    const context = texture.getContext("2d");
-    context.drawImage(source, 0, 0);
-    if (this.canvasManager.fluidSnapshotCanvas) {
-      context.globalAlpha = .78;
-      context.drawImage(this.canvasManager.fluidSnapshotCanvas, 0, 0, texture.width, texture.height);
-    }
-    return texture;
+    return source;
   }
 
   async presentShowcase(host, artworkCanvas, revision = `showcase-${Date.now()}`, galleryPose = null, fabricMaterial = null) {
@@ -605,10 +604,10 @@ export class App {
     const viewer = document.getElementById("threeViewer");
     const error = document.getElementById("threeError");
     if (viewMode === "3d") {
+      if (this.inkLayers.freeze()) { this.renderer.invalidate(); this.renderer.render(); }
       error.hidden = true;
       try {
         const preview = await this.ensureBundledUmbrella();
-        this.canvasManager.setFluidSnapshot(preview.captureFluidSnapshot());
         document.getElementById("canvasStage").hidden = true;
         viewer.hidden = false;
         preview.setPresentation("3d", document.getElementById("threeHost"));
@@ -982,30 +981,16 @@ export class App {
   }
 
   rebuildFluidArtwork() {
-    // GPU pigment is the visible artwork for every preset. Rebuild from the
-    // recorded source segments after undo/redo, without old stroke momentum.
-    this.pendingFluidSplats.length = 0;
-    const strokes = this.renderer.document.strokes
-      .filter((stroke) => stroke.settings?.gpuInk === true || stroke.settings?.brushStyle === "fluid")
-      .filter((stroke) => stroke.fluidSplats?.length);
-    const replay = [];
-    const diameter = this.canvasManager.radius * 2;
-    strokes.forEach((stroke) => (stroke.fluidSplats || []).forEach((splat) => {
+    this.inkLayers.freeze();
+    this.renderer.invalidate();
+    this.renderer.render();
+  }
+
+  replayInkStroke(stroke) {
+    return (stroke.fluidSplats || []).flatMap((splat) => {
       const settled = { ...splat, force: { x: 0, y: 0 } };
-      const copies = stroke.settings?.gpuInk === true
-        ? this.expandInkSplat(settled, stroke.settings, diameter)
-        : [settled];
-      copies.forEach((copy) => replay.push({ ...copy, force: { x: 0, y: 0 } }));
-    }));
-    this.canvasManager.setFluidSnapshot(null);
-    if (this.threePreview) {
-      this.threePreview.clearFluid();
-      this.threePreview.setInkOpacity(1);
-      this.threePreview.injectInks(replay);
-      if (strokes.length) this.threePreview.setActive(true);
-    } else {
-      this.pendingFluidSplats.push(...replay);
-    }
+      return stroke.settings?.gpuInk === true ? this.expandInkSplat(settled, stroke.settings) : [settled];
+    });
   }
 
   pointToCanopyUV(point, diameter) {
@@ -1128,8 +1113,8 @@ export class App {
     this.updateReadouts(); this.controls.updateSwatches();
   }
 
-  undo() { if (this.renderer.undo()) { this.rebuildFluidArtwork(); this.updateSelectionControls(); this.showMessage("已撤销"); } }
-  redo() { if (this.renderer.redo()) { this.rebuildFluidArtwork(); this.updateSelectionControls(); this.showMessage("已重做"); } }
+  undo() { if (this.renderer.undo()) { this.updateSelectionControls(); this.showMessage("已撤销"); } }
+  redo() { if (this.renderer.redo()) { this.updateSelectionControls(); this.showMessage("已重做"); } }
   refreshBase(settings = this.controls.getSettings()) {
     this.canvasManager.renderBase(settings, { deferRender: true });
     this.renderer.render({ markTexture: false });
