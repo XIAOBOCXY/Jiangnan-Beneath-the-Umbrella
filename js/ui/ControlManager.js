@@ -1,4 +1,4 @@
-import { getMotifAsset, getMotifAssetURL, MOTIF_CATEGORIES, MOTIF_LIBRARY } from "../drawing/MotifLibrary.js?v=20261111-motif-counts-v5";
+import { getMotifAsset, getMotifAssetURL, MOTIF_CATEGORIES, MOTIF_LIBRARY } from "../drawing/MotifLibrary.js?v=20261112-motif-v1";
 
 // ControlManager 维护界面控件与显示值，不直接操作 Canvas。
 export class ControlManager {
@@ -335,7 +335,8 @@ export class ControlManager {
     const mirrorDisabled = Number(this.elements.segments.value) <= 1;
     this.elements.mirror.disabled = mirrorDisabled;
     this.elements.mirror.closest(".check-row")?.classList.toggle("is-disabled", mirrorDisabled);
-    this.elements.mirror.title = mirrorDisabled ? "1 重为单笔绘制，镜像仅在重复数大于 1 时可用" : "镜像笔迹";
+    this.elements.mirror.setAttribute("aria-checked", String(this.elements.mirror.checked));
+    this.elements.mirror.title = mirrorDisabled ? "1 重为单笔绘制，镜像仅在重复数大于 1 时可用" : "相邻重复笔迹交替镜像翻转，数量保持不变";
     this.updatePatternValues();
     this.rangeInputs?.forEach((input) => this.updateRangeProgress(input));
   }

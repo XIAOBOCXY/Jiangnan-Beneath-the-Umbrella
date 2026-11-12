@@ -36,6 +36,8 @@ const STREET_WHEEL_TRAVEL_LIMIT = INITIAL_CAMERA_Z - ROPE_DEPTHS[ROPE_DEPTHS.len
 const LOOK_YAW_LIMIT = .085;
 const LOOK_PITCH_UP_LIMIT = 1.32;
 const LOOK_PITCH_DOWN_LIMIT = .65;
+const TOUCH_LOOK_YAW_LIMIT = .65;
+const TOUCH_DRAG_THRESHOLD = 8;
 
 function applyWetPavingShading(material) {
   const uniforms = {
@@ -113,6 +115,9 @@ export class HangingGallery3D {
     this.generation = 0;
     this.reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.pointer = new THREE.Vector2();
+    this.touchPoints = new Map();
+    this.touchGesture = null;
+    this.ignoreTouchClickUntil = 0;
     this.canopyPickTargets = [];
     this.lightColors = {
       sunBase: new THREE.Color(0xffedcb), sunset: new THREE.Color(0xffa970),
@@ -160,7 +165,14 @@ export class HangingGallery3D {
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(host);
     host.addEventListener("pointermove", (e) => this.handlePointer(e), { passive: true });
-    host.addEventListener("pointerleave", () => { this.hoveredUmbrella = null; this.viewTarget.set(0, 0); host.style.cursor = ""; });
+    host.addEventListener("pointerleave", (event) => {
+      if (event.pointerType === "touch") return;
+      this.hoveredUmbrella = null; this.viewTarget.set(0, 0); host.style.cursor = "";
+    });
+    host.addEventListener("pointerdown", (event) => this.handleTouchStart(event));
+    host.addEventListener("pointermove", (event) => this.handleTouchMove(event));
+    host.addEventListener("pointerup", (event) => this.handleTouchEnd(event));
+    host.addEventListener("pointercancel", (event) => this.handleTouchEnd(event, true));
     host.addEventListener("click", (e) => this.handleClick(e));
     host.addEventListener("wheel", (event) => {
       event.preventDefault();
@@ -249,7 +261,10 @@ export class HangingGallery3D {
   }
 
   makeMountainBackdrop() {
-    const texture = new THREE.TextureLoader().load("assets/gallery/misty-west-lake-panorama.png?v=20261106-1");
+    let texture;
+    this.panoramaReady = new Promise((resolve, reject) => {
+      texture = new THREE.TextureLoader().load("assets/gallery/misty-west-lake-panorama.png?v=20261106-1", resolve, undefined, reject);
+    });
     texture.colorSpace = THREE.SRGBColorSpace;
     this.lakePhotoTexture = texture;
     const maskCanvas = document.createElement("canvas"); maskCanvas.width = 8; maskCanvas.height = 256;
@@ -351,7 +366,8 @@ export class HangingGallery3D {
     try {
       const [street, displayPoses] = await Promise.all([
         loader.loadAsync("assets/models/hanging-gallery-street.glb?v=20261111-flush-windows-v30"),
-        loader.loadAsync("assets/models/west-lake-umbrella-display.glb?v=20261108-radial-canopy-v4")
+        loader.loadAsync("assets/models/west-lake-umbrella-display.glb?v=20261108-radial-canopy-v4"),
+        this.panoramaReady
       ]);
       street.scene.traverse((object) => {
         if (object.name.startsWith("WindPlant")) this.plants.push(object);
@@ -393,9 +409,8 @@ export class HangingGallery3D {
       this.prepareDisplayPoses(displayPoses.scene);
       this.renderer.shadowMap.needsUpdate = true;
       this.host.classList.add("is-ready");
-      this.host.querySelector(".hanging-gallery-loading")?.remove();
     } catch (error) {
-      const status = this.host.querySelector(".hanging-gallery-loading");
+      const status = document.querySelector("#hangingGallery .hanging-gallery-loading");
       if (status) status.textContent = "三维街景加载失败，请刷新后重试。";
       console.error("悬伞街景加载失败：", error);
       throw error;
@@ -468,8 +483,8 @@ export class HangingGallery3D {
     const generation = ++this.generation;
     try {
       await this.ready;
-      const canvases = await Promise.all(works.map((work) => getCanvas(work).catch((error) => { console.warn("无法读取展伞纹样：", error); return null; })));
-      if (generation !== this.generation) return;
+      const canvases = await Promise.all(works.map((work) => getCanvas(work)));
+      if (generation !== this.generation) return false;
       this.groundDisplays.forEach((group) => {
         this.scene.remove(group);
         if (group.userData.ownsGeometry) group.geometry.dispose();
@@ -507,7 +522,7 @@ export class HangingGallery3D {
       });
       if (!resources.length) {
         this.focusedWorkId = null;
-        return;
+        return true;
       }
       const slots = [];
       this.pickGeometry ||= new THREE.SphereGeometry(.52, 10, 7);
@@ -566,7 +581,11 @@ export class HangingGallery3D {
       });
       this.canopyPickTargets = this.umbrellas.flatMap((item) => [item.canopy, item.pickArea]);
       this.setFocusedWork(focusedWorkId);
-    } catch (error) { console.warn("悬伞作品加载失败：", error); }
+      return true;
+    } catch (error) {
+      console.warn("悬伞作品加载失败：", error);
+      throw error;
+    }
   }
 
   setFocusedWork(workId = null) {
@@ -692,10 +711,11 @@ export class HangingGallery3D {
     if (this.active === active) return;
     this.active = active;
     if (active) { this.resize(); this.lastTime = 0; this.frame = requestAnimationFrame((time) => this.tick(time)); }
-    else { cancelAnimationFrame(this.frame); this.lastTime = 0; }
+    else { cancelAnimationFrame(this.frame); this.lastTime = 0; this.touchPoints.clear(); this.touchGesture = null; }
   }
 
   handlePointer(event) {
+    if (event.pointerType === "touch") return;
     const rect = this.host.getBoundingClientRect();
     if (event.pointerType === "mouse") {
       const x = clamp((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
@@ -711,7 +731,68 @@ export class HangingGallery3D {
     this.hoveredUmbrella = hit;
     this.host.style.cursor = hit ? "pointer" : "";
   }
+  handleTouchStart(event) {
+    if (!this.active || event.pointerType !== "touch") return;
+    this.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    this.host.setPointerCapture?.(event.pointerId);
+    if (this.touchPoints.size === 1) {
+      this.touchGesture = { startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, moved: false, multiple: false };
+    } else if (this.touchGesture) {
+      this.touchGesture.multiple = true;
+      const points = [...this.touchPoints.values()];
+      this.touchGesture.lastX = (points[0].x + points[1].x) / 2;
+      this.touchGesture.lastY = (points[0].y + points[1].y) / 2;
+    }
+  }
+
+  handleTouchMove(event) {
+    if (event.pointerType !== "touch" || !this.touchPoints.has(event.pointerId) || !this.touchGesture) return;
+    const point = this.touchPoints.get(event.pointerId);
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const gesture = this.touchGesture;
+    if (this.touchPoints.size >= 2) {
+      const points = [...this.touchPoints.values()];
+      const x = (points[0].x + points[1].x) / 2;
+      const y = (points[0].y + points[1].y) / 2;
+      const maxX = Math.max(.1, 2.5 * streetTaperAtDepth(this.depthTarget));
+      this.cameraXTarget = clamp(this.cameraXTarget - (x - gesture.lastX) * .012, -maxX, maxX);
+      this.viewTarget.y = clamp(this.viewTarget.y + (y - gesture.lastY) * .008, -LOOK_PITCH_DOWN_LIMIT, LOOK_PITCH_UP_LIMIT);
+      gesture.lastX = x;
+      gesture.lastY = y;
+      gesture.moved = true;
+      return;
+    }
+    if (gesture.multiple) return;
+    if (!gesture.moved && Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) < TOUCH_DRAG_THRESHOLD) return;
+    gesture.moved = true;
+    const dx = event.clientX - gesture.lastX;
+    const dy = event.clientY - gesture.lastY;
+    const travel = -dy * .025;
+    if (!(travel > 0 && this.depthTarget > STREET_WHEEL_TRAVEL_LIMIT)) {
+      this.depthTarget = clamp(this.depthTarget + travel, 0, STREET_WHEEL_TRAVEL_LIMIT);
+    }
+    this.viewTarget.x = clamp(this.viewTarget.x - dx / Math.max(this.host.clientWidth, 1) * 1.8, -TOUCH_LOOK_YAW_LIMIT, TOUCH_LOOK_YAW_LIMIT);
+    gesture.lastX = event.clientX;
+    gesture.lastY = event.clientY;
+  }
+
+  handleTouchEnd(event, cancelled = false) {
+    if (event.pointerType !== "touch" || !this.touchPoints.has(event.pointerId)) return;
+    this.touchPoints.delete(event.pointerId);
+    const gesture = this.touchGesture;
+    if (this.touchPoints.size) return;
+    this.touchGesture = null;
+    // A touch tap selects once; swipes and the browser's following click do not.
+    this.ignoreTouchClickUntil = performance.now() + 400;
+    if (!cancelled && gesture && !gesture.moved && !gesture.multiple) this.selectAt(event);
+  }
+
   handleClick(event) {
+    if (performance.now() < this.ignoreTouchClickUntil) return;
+    this.selectAt(event);
+  }
+  selectAt(event) {
     const rect = this.host.getBoundingClientRect();
     this.pointer.set((event.clientX-rect.left)/Math.max(rect.width,1)*2-1, -((event.clientY-rect.top)/Math.max(rect.height,1)*2-1));
     const hit = this.findUmbrella(this.pointer);

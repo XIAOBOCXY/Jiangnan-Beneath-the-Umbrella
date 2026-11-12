@@ -1,4 +1,4 @@
-import { getMotifAssetURL, MOTIF_CATEGORIES, MOTIF_FORMATS, MOTIF_LIBRARY } from "./MotifLibrary.js?v=20261111-motif-counts-v5";
+import { getMotifAssetURL, MOTIF_CATEGORIES, MOTIF_FORMATS, MOTIF_LIBRARY } from "./MotifLibrary.js?v=20261112-motif-v1";
 
 const VALID_ZONES = new Set(["伞心", "中部", "外圈", "伞缘"]);
 

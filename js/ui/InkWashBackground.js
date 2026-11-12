@@ -10,6 +10,11 @@ export class InkWashBackground {
     if (!hostMap?.studio || !hostMap?.heritage) return;
     this.hosts = hostMap;
     this.mode = "off";
+    // iOS WebKit can composite a transparent WebGL iframe as a white veil.
+    // Keep the book readable and use its static paper/ink background there.
+    this.staticHeritage = /iPad|iPhone|iPod/i.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    document.documentElement.classList.toggle("heritage-static-background", this.staticHeritage);
     this.frames = new Map();
     this.pointer = null;
     this.transitionPaused = false;
@@ -64,6 +69,7 @@ export class InkWashBackground {
 
   setSceneMode(mode) {
     this.mode = mode === "studio" || mode === "heritage" ? mode : "off";
+    if (this.mode === "heritage" && this.staticHeritage) this.mode = "off";
     this.clearPointer();
     this.syncFrames();
   }

@@ -1,5 +1,5 @@
 import { ArtworkGalleryStore } from "../features/ArtworkGalleryStore.js?v=20261111-gallery-color-v5";
-import { HangingGallery3D } from "./HangingGallery3D.js?v=20261111-lantern-default-v1";
+import { HangingGallery3D } from "./HangingGallery3D.js?v=20261112-mobile-fixes-v2";
 import { NavigationInk } from "./NavigationInk.js?v=20261106-ink-font-v1";
 
 const ROUTES = new Set(["home", "heritage", "studio", "gallery"]);
@@ -70,7 +70,10 @@ export class SiteExperience {
     this.app.ready.then(() => {
       this.featuredWork ||= this.store.createFeatured(this.app.canvasManager.getUmbrellaTextureCanvas());
       if (this.page === "gallery") this.refreshGallery();
-    }).catch((error) => console.warn("作品工坊初始化失败：", error));
+    }).catch((error) => {
+      console.warn("作品工坊初始化失败：", error);
+      document.querySelector("#hangingGallery .hanging-gallery-loading").textContent = "作品工坊启动失败，请刷新后重试。";
+    });
     window.addEventListener("popstate", () => this.showPage(this.routeFromHash(), false));
     // Mobile pages can scroll below the canvas. Returning to the desktop's
     // fixed-height exhibit must not retain that off-screen scroll position.
@@ -235,6 +238,9 @@ export class SiteExperience {
       image.decode?.().catch(() => {});
     });
     this.heritageIndex = 0;
+    this.heritageLeafIndex = 0;
+    const singlePage = window.matchMedia("(max-width: 680px), (max-width: 980px) and (pointer: coarse)");
+    const leaves = this.heritageSpreads.flatMap((spread) => [...spread.children].filter((child) => child.classList.contains("heritage-leaf")));
     this.heritageFlipBusy = false;
     this.heritageBookLayout = this.heritageBook.closest(".heritage-book-layout");
     this.heritageFlipSheet = document.getElementById("heritageFlipSheet");
@@ -269,6 +275,25 @@ export class SiteExperience {
       });
     });
     const renderTabs = (index, clearFlight = false) => {
+      if (singlePage.matches) {
+        const activeIndex = Math.max(-1, ...rightTabs.map((tab) => Number(tab.dataset.heritageSpread)).filter((value) => value <= index));
+        rightTabs.forEach((tab) => {
+          const active = Number(tab.dataset.heritageSpread) === activeIndex;
+          tab.classList.remove("is-passed", "is-in-flight", "is-turn-target");
+          tab.classList.toggle("is-active", active);
+          tab.disabled = false;
+          tab.removeAttribute("aria-hidden");
+          if (active) tab.setAttribute("aria-current", "page");
+          else tab.removeAttribute("aria-current");
+        });
+        leftTabs.forEach((tab) => {
+          tab.disabled = true;
+          tab.setAttribute("aria-hidden", "true");
+        });
+        rightTabs[0]?.closest("nav")?.setAttribute("aria-label", "书册章节索引");
+        return;
+      }
+      rightTabs[0]?.closest("nav")?.setAttribute("aria-label", "待翻书页索引签");
       const activeTab = rightTabs.find((tab) => Number(tab.dataset.heritageSpread) === index);
       rightTabs.forEach((tab) => {
         if (clearFlight) tab.classList.remove("is-in-flight", "is-turn-target");
@@ -294,20 +319,42 @@ export class SiteExperience {
       });
     };
     const renderSpread = () => {
+      if (!singlePage.matches) this.heritageLeafIndex = this.heritageIndex * 2;
+      else if (leaves[this.heritageLeafIndex]?.parentElement !== this.heritageSpreads[this.heritageIndex]) {
+        this.heritageLeafIndex = leaves.findIndex((leaf) => leaf.parentElement === this.heritageSpreads[this.heritageIndex]);
+      }
       this.heritageSpreads.forEach((spread, index) => {
         spread.classList.remove("is-flipping-current-next", "is-flipping-current-previous", "is-flipping-target");
         spread.hidden = index !== this.heritageIndex;
         spread.classList.toggle("is-active", index === this.heritageIndex);
       });
-      previous.disabled = this.heritageIndex === 0;
-      next.disabled = this.heritageIndex === this.heritageSpreads.length - 1;
+      leaves.forEach((leaf, index) => {
+        const hidden = singlePage.matches && index !== this.heritageLeafIndex;
+        leaf.classList.toggle("is-mobile-hidden", hidden);
+        if (hidden) leaf.setAttribute("aria-hidden", "true");
+        else leaf.removeAttribute("aria-hidden");
+      });
+      previous.disabled = singlePage.matches ? this.heritageLeafIndex === 0 : this.heritageIndex === 0;
+      next.disabled = singlePage.matches ? this.heritageLeafIndex === leaves.length - 1 : this.heritageIndex === this.heritageSpreads.length - 1;
       renderTabs(this.heritageIndex, true);
       this.heritageBookLayout.classList.remove("is-turning");
       this.heritageBook.removeAttribute("aria-busy");
     };
     this.turnHeritagePage = async (direction, destinationIndex = null) => {
+      if (this.heritageFlipBusy) return;
+      if (singlePage.matches) {
+        const targetSpread = destinationIndex === null ? null : this.heritageSpreads[destinationIndex];
+        const chapterLeaf = targetSpread?.querySelector(".heritage-page-content") || targetSpread?.querySelector(".heritage-leaf");
+        const targetLeaf = destinationIndex === null ? this.heritageLeafIndex + direction : leaves.indexOf(chapterLeaf);
+        if (targetLeaf < 0 || targetLeaf >= leaves.length) return;
+        this.heritageLeafIndex = targetLeaf;
+        this.heritageIndex = this.heritageSpreads.indexOf(leaves[targetLeaf].parentElement);
+        renderSpread();
+        this.heritageSpreads[this.heritageIndex].scrollTop = 0;
+        return;
+      }
       const targetIndex = destinationIndex ?? this.heritageIndex + direction;
-      if (this.heritageFlipBusy || targetIndex < 0 || targetIndex >= this.heritageSpreads.length) return;
+      if (targetIndex < 0 || targetIndex >= this.heritageSpreads.length) return;
       const fromIndex = this.heritageIndex;
       const current = this.heritageSpreads[this.heritageIndex];
       const target = this.heritageSpreads[targetIndex];
@@ -416,7 +463,7 @@ export class SiteExperience {
       if (this.heritageFlipBusy) return;
       const targetIndex = Number(tab.dataset.heritageSpread);
       if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= this.heritageSpreads.length) return;
-      if (targetIndex === this.heritageIndex) return;
+      if (targetIndex === this.heritageIndex && !singlePage.matches) return;
       this.turnHeritagePage(Math.sign(targetIndex - this.heritageIndex), targetIndex);
     }));
     let pageGesture = null;
@@ -464,12 +511,13 @@ export class SiteExperience {
       if (event.key === "ArrowRight" || event.key === "PageDown") this.turnHeritagePage(1);
       if (event.key === "ArrowLeft" || event.key === "PageUp") this.turnHeritagePage(-1);
     });
+    singlePage.addEventListener("change", () => {
+      if (!this.heritageFlipBusy) renderSpread();
+    });
     renderSpread();
   }
 
   async getFeaturedWork() {
-    await this.app.ready;
-    this.featuredWork ||= this.store.createFeatured(this.app.canvasManager.getUmbrellaTextureCanvas());
     const saved = this.store.list();
     const selectedId = this.store.getSelectedWorkId();
     const selected = saved.find((work) => work.id === selectedId);
@@ -478,9 +526,11 @@ export class SiteExperience {
       return { ...selected, fabricMaterial: selected.fabricMaterial || this.app.controls.getSettings().fabricMaterial || "georgette" };
     }
     const fallbackMaterial = this.app.controls.getSettings().fabricMaterial || "georgette";
-    const choices = saved.length
-      ? saved.map((work) => ({ ...work, fabricMaterial: work.fabricMaterial || fallbackMaterial }))
-      : [this.featuredWork];
+    if (!saved.length) {
+      await this.app.ready;
+      this.featuredWork ||= this.store.createFeatured(this.app.canvasManager.getUmbrellaTextureCanvas());
+    }
+    const choices = saved.length ? saved.map((work) => ({ ...work, fabricMaterial: work.fabricMaterial || fallbackMaterial })) : [this.featuredWork];
     if (!this.homeWorkId || !choices.some((work) => work.id === this.homeWorkId)) {
       const choice = choices[Math.floor(Math.random() * choices.length)];
       this.homeWorkId = choice.id;
@@ -490,8 +540,11 @@ export class SiteExperience {
 
   async presentHomeUmbrella() {
     try {
-      const work = await this.getFeaturedWork();
-      const canvas = await this.getCanvas(work);
+      // The heavy model and the selected artwork do not depend on one another.
+      const [{ work, canvas }] = await Promise.all([
+        this.getFeaturedWork().then(async (work) => ({ work, canvas: await this.getCanvas(work) })),
+        this.app.ensureBundledUmbrella()
+      ]);
       if (this.page !== "home") return;
       const preview = await this.app.presentShowcase(
         document.getElementById("homeUmbrellaHost"),
@@ -532,6 +585,7 @@ export class SiteExperience {
     const focusHost = document.getElementById("galleryFocusHost");
     let focusGesture = null;
     focus.addEventListener("pointerdown", (event) => {
+      if (event.target.closest(".gallery-focus-close")) return;
       if (event.pointerType === "mouse" && event.button !== 0) return;
       focusGesture = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     }, true);
@@ -545,6 +599,7 @@ export class SiteExperience {
       if (!hitUmbrella) this.closeGalleryFocus();
     }, true);
     focus.addEventListener("pointercancel", () => { focusGesture = null; }, true);
+    document.getElementById("galleryFocusClose").addEventListener("click", () => this.closeGalleryFocus());
 
     const hangingGallery = document.getElementById("hangingGallery");
     document.getElementById("hangingGalleryCreate").addEventListener("click", () => {
@@ -597,7 +652,7 @@ export class SiteExperience {
         this.hangingWorld.ready.catch(() => {});
       } catch (error) {
         console.error("无法启动三维悬伞街景：", error);
-        document.querySelector("#hangingGallery3D .hanging-gallery-loading").textContent = "三维街景启动失败，请检查浏览器的 WebGL 支持。";
+        document.querySelector("#hangingGallery .hanging-gallery-loading").textContent = "三维街景启动失败，请检查浏览器的 WebGL 支持。";
       }
     }
     this.hangingWorld?.setActive(true);
@@ -728,10 +783,28 @@ export class SiteExperience {
       const storedSelection = this.store.getSelectedWorkId();
       this.hangingFocusId = works.some((work) => work.id === storedSelection) ? storedSelection : null;
     }
-    if (this.hangingGalleryMode) this.renderHangingGallery();
-    if (this.hangingGalleryMode) void this.hangingWorld?.setWorks(works, (work) => this.getCanvas(work), this.hangingFocusId);
     const token = ++this.galleryPreparationToken;
-    void this.prepareHangingWorks(works, token);
+    if (!this.hangingGalleryMode || !this.hangingWorld) {
+      void this.prepareHangingWorks(works, token);
+      return;
+    }
+    const gallery = document.getElementById("hangingGallery");
+    gallery.classList.remove("is-scene-ready");
+    gallery.querySelector(".hanging-gallery-loading").textContent = "正在布置悬伞街景…";
+    this.renderHangingGallery();
+    void Promise.all([
+      this.hangingWorld.setWorks(works, (work) => this.getCanvas(work), this.hangingFocusId),
+      this.prepareHangingWorks(works, token)
+    ]).then(async ([applied]) => {
+      if (!applied || token !== this.galleryPreparationToken || !this.hangingGalleryMode || this.page !== "gallery") return;
+      // Let the active renderer draw the completed scene before uncovering it.
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (token === this.galleryPreparationToken && this.hangingGalleryMode && this.page === "gallery") gallery.classList.add("is-scene-ready");
+    }).catch((error) => {
+      if (token !== this.galleryPreparationToken) return;
+      gallery.querySelector(".hanging-gallery-loading").textContent = "悬伞街景加载失败，请刷新后重试。";
+      console.error("悬伞街景准备失败：", error);
+    });
   }
 
   async prepareHangingWorks(works, token) {

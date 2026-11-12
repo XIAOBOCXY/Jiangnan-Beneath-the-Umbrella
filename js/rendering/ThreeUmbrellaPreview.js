@@ -1690,8 +1690,26 @@ export class ThreeUmbrellaPreview {
     return this.installGLTF(gltf);
   }
 
-  async loadGLBURL(url) {
+  async loadGLBURL(url, compressedRequest = null) {
     const loader = new GLTFLoader();
+    // The packaged model is byte-for-byte gzip compressed, so modern browsers
+    // transfer less data without changing meshes, materials or animation.
+    // Older browsers and any failed compressed response use the original GLB.
+    if (typeof DecompressionStream === "function") {
+      try {
+        const compressedUrl = new URL(url, location.href);
+        compressedUrl.pathname += ".gzbin";
+        const response = compressedRequest ? await compressedRequest : await fetch(compressedUrl.href);
+        if (!response) throw new Error("压缩模型请求失败");
+        if (!response.ok || !response.body) throw new Error(`压缩模型请求失败 (${response.status})`);
+        const stream = response.body.pipeThrough(new DecompressionStream("gzip"));
+        const buffer = await new Response(stream).arrayBuffer();
+        const gltf = await loader.parseAsync(buffer, new URL(".", url).href);
+        return this.installGLTF(gltf);
+      } catch (error) {
+        console.warn("压缩伞模未能载入，改用原始模型：", error);
+      }
+    }
     return this.installGLTF(await loader.loadAsync(url));
   }
 

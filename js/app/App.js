@@ -1,11 +1,12 @@
 import * as THREE from "three";
-import { CanvasManager } from "../core/CanvasManager.js?v=20261111-neutral-dye-v1";
-import { MandalaRenderer } from "../core/MandalaRenderer.js?v=20261111-inspiration-batch-v6";
-import { PatternDrawer } from "../drawing/PatternDrawer.js?v=20261111-motif-counts-v5";
+import { CanvasManager } from "../core/CanvasManager.js?v=20261112-mobile-layout-v1";
+import { MandalaRenderer } from "../core/MandalaRenderer.js?v=20261112-symmetry-v1";
+import { radialCopyTransforms } from "../core/RadialSymmetry.js?v=20261112-symmetry-v1";
+import { PatternDrawer } from "../drawing/PatternDrawer.js?v=20261112-motif-v1";
 import { TemplateComposer } from "../features/TemplateComposer.js?v=20261111-empty-start-v10";
 import { ArtworkGalleryStore } from "../features/ArtworkGalleryStore.js?v=20261111-gallery-color-v5";
-import { ControlManager } from "../ui/ControlManager.js?v=20261111-motif-inspiration-v8";
-import { MOTIF_LIBRARY } from "../drawing/MotifLibrary.js?v=20261111-motif-counts-v5";
+import { ControlManager } from "../ui/ControlManager.js?v=20261112-motif-v1";
+import { MOTIF_LIBRARY } from "../drawing/MotifLibrary.js?v=20261112-motif-v1";
 
 const INK_PRESETS = {
   // Dry presets inject pigment only. The shader keeps their edges crisp;
@@ -163,6 +164,14 @@ export class App {
     const studioPage = document.getElementById("studioPage");
     const panel = document.getElementById("studioControls");
     const panelToggle = document.getElementById("studioPanelToggle");
+    const compactTools = window.matchMedia("(max-width: 680px), (max-width: 980px) and (pointer: coarse)");
+    if (compactTools.matches) {
+      studioPage.classList.add("is-panel-collapsed");
+      panel.inert = true;
+      panelToggle.setAttribute("aria-expanded", "false");
+      panelToggle.setAttribute("aria-label", "展开创作工具");
+      panelToggle.querySelector("span").textContent = "展卷";
+    }
     panelToggle?.addEventListener("click", () => {
       const collapsed = studioPage.classList.toggle("is-panel-collapsed");
       panel.inert = collapsed;
@@ -340,7 +349,7 @@ export class App {
   async ensureThreePreview() {
     if (this.threePreview) return this.threePreview;
     if (!this.fluidInitPromise) {
-      this.fluidInitPromise = import("../rendering/ThreeUmbrellaPreview.js?v=20261111-lantern-default-v1").then(({ ThreeUmbrellaPreview }) => {
+      this.fluidInitPromise = import("../rendering/ThreeUmbrellaPreview.js?v=20261112-gzip-model-v1").then(({ ThreeUmbrellaPreview }) => {
         const preview = new ThreeUmbrellaPreview(document.getElementById("threeHost"));
         preview.setFabricMaterial(this.controls.getSettings().fabricMaterial);
         preview.onFoldProgress = (progress) => this.updateFoldControls(progress);
@@ -363,7 +372,7 @@ export class App {
 
   warmFluidPreview() {
     this.ensureThreePreview().then((preview) => {
-      if (this.viewMode !== "2d") return;
+      if (this.viewMode !== "2d" || document.documentElement.dataset.sitePage !== "studio") return;
       preview.setPresentation("fluid", document.getElementById("fluidHost"));
       preview.setActive(true);
     }).catch((error) => {
@@ -373,22 +382,33 @@ export class App {
     });
   }
 
-  async ensureBundledUmbrella() {
-    const preview = await this.ensureThreePreview();
-    if (preview.modelKind === "glb" || this.bundledModelPromise) return this.bundledModelPromise || preview;
+  ensureBundledUmbrella() {
+    if (this.bundledModelPromise) return this.bundledModelPromise;
+    if (this.threePreview?.modelKind === "glb") return Promise.resolve(this.threePreview);
     const bundledModelUrl = new URL("../../assets/models/west-lake-umbrella.glb?v=20261105-silk-linkage-v2", import.meta.url);
     // Bust the browser cache when the bundled Blender model is regenerated;
     // otherwise a reload can keep showing the old rib-only fold animation.
     bundledModelUrl.searchParams.set("v", "20261105-silk-linkage-v2");
-    this.bundledModelPromise = preview.loadGLBURL(bundledModelUrl.href)
-      .then((result) => {
+    const compressedUrl = new URL(bundledModelUrl.href);
+    compressedUrl.pathname += ".gzbin";
+    // Begin the transfer before waiting for the Three.js module and GPU setup.
+    const compressedRequest = typeof DecompressionStream === "function"
+      ? fetch(compressedUrl.href, { priority: "high" }).catch(() => null)
+      : null;
+    this.bundledModelPromise = this.ensureThreePreview().then(async (preview) => {
+      if (preview.modelKind === "glb") return preview;
+      try {
+        const result = await preview.loadGLBURL(bundledModelUrl.href, compressedRequest);
         console.info("Blender 绸伞模型已载入", result);
         return preview;
-      })
-      .catch((error) => {
+      } catch (error) {
         console.warn("内置 Blender 伞模未载入，继续使用交互原型：", error);
         return preview;
-      });
+      }
+    }).catch((error) => {
+      this.bundledModelPromise = null;
+      throw error;
+    });
     return this.bundledModelPromise;
   }
 
@@ -467,11 +487,16 @@ export class App {
         position: preview.camera.position.clone(),
         up: preview.camera.up.clone(),
         target: preview.controls.target.clone(),
-        fov: preview.camera.fov
+        fov: preview.camera.fov,
+        far: preview.camera.far,
+        maxDistance: preview.controls.maxDistance
       };
     }
     const isHomeShowcase = host?.id === "homeUmbrellaHost";
     const isGalleryFocusShowcase = host?.id === "galleryFocusHost";
+    const isMobileGalleryFocus = isGalleryFocusShowcase && window.matchMedia("(max-width: 680px), (max-width: 980px) and (pointer: coarse)").matches;
+    preview.controls.maxDistance = this.studioCameraSnapshot.maxDistance;
+    preview.camera.far = this.studioCameraSnapshot.far;
     preview.setFabricMaterial(fabricMaterial || this.controls.getSettings().fabricMaterial);
     preview.setPresentation("3d", host);
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -504,7 +529,12 @@ export class App {
         const center = bounds.getCenter(new THREE.Vector3());
         const size = bounds.getSize(new THREE.Vector3());
         const diameter = Math.max(size.x, size.z, .1);
-        const distance = diameter / (2 * Math.tan(THREE.MathUtils.degToRad(preview.camera.fov * .5))) * 1.12;
+        const aspectFit = isMobileGalleryFocus ? 1.32 / Math.min(preview.camera.aspect, 1) : 1.12;
+        const distance = diameter / (2 * Math.tan(THREE.MathUtils.degToRad(preview.camera.fov * .5))) * aspectFit;
+        if (isMobileGalleryFocus) {
+          preview.controls.maxDistance = Math.max(preview.controls.maxDistance, distance * 1.5);
+          preview.camera.far = Math.max(preview.camera.far, distance * 2 + 10);
+        }
         const elevation = THREE.MathUtils.degToRad(39);
         const azimuth = THREE.MathUtils.degToRad(14);
         preview.controls.target.copy(center);
@@ -514,7 +544,7 @@ export class App {
           center.z + distance * Math.cos(elevation) * Math.cos(azimuth)
         );
         // Leave more room below the canopy for the gallery's bottom rail.
-        const framingOffset = diameter * .16;
+        const framingOffset = diameter * (isMobileGalleryFocus ? .06 : .16);
         preview.camera.position.y -= framingOffset;
         preview.controls.target.y -= framingOffset;
       }
@@ -557,6 +587,8 @@ export class App {
       if (this.studioCameraSnapshot.up) this.threePreview.camera.up.copy(this.studioCameraSnapshot.up);
       this.threePreview.controls.target.copy(this.studioCameraSnapshot.target);
       this.threePreview.camera.fov = this.studioCameraSnapshot.fov ?? 34;
+      this.threePreview.camera.far = this.studioCameraSnapshot.far ?? 30;
+      this.threePreview.controls.maxDistance = this.studioCameraSnapshot.maxDistance ?? 10;
       this.threePreview.camera.updateProjectionMatrix();
       this.threePreview.controls.update();
       this.studioCameraSnapshot = null;
@@ -680,13 +712,15 @@ export class App {
     this.canvasContainer.setPointerCapture(event.pointerId);
     if (this.mode === "brush") {
       const settings = this.settingsForPointer(this.controls.getSettings(), event);
+      settings.symmetryVersion = 2;
+      settings.mirrorAxis = Math.atan2(point.y - this.canvasManager.center.y, point.x - this.canvasManager.center.x);
       // Keep old pigment fixed before a new stroke starts, so its velocity
       // field cannot pull earlier marks across the silk.
       window.clearTimeout(this.fluidSealTimer);
       this.threePreview?.sealFluidMotion();
       this.canvasContainer.classList.add("is-brush-drawing");
       const stroke = this.renderer.beginStroke(point, settings);
-      this.gesture = { type: "brush", brushStyle: settings.brushStyle, strokeId: stroke?.id, pointerId: event.pointerId, lastPoint: point };
+      this.gesture = { type: "brush", brushStyle: settings.brushStyle, strokeSettings: settings, strokeId: stroke?.id, pointerId: event.pointerId, lastPoint: point };
       return;
     }
     if (this.mode !== "pattern") return;
@@ -805,7 +839,7 @@ export class App {
       // Pointer events can repeat while the pointer is stationary. Those
       // zero-length samples must not become round stamps.
       if (Math.hypot(point.x - this.gesture.lastPoint.x, point.y - this.gesture.lastPoint.y) < 2) return;
-      const settings = this.settingsForPointer(this.controls.getSettings(), event);
+      const settings = this.settingsForPointer(this.gesture.strokeSettings, event);
       this.renderer.extendStroke(point, settings);
       this.injectFluidSegment(this.gesture.lastPoint, point, settings);
       this.gesture.lastPoint = point;
@@ -1013,6 +1047,18 @@ export class App {
       y: center.y - (splat.uv.y - 0.5) * diameter
     };
     const count = Math.max(1, Math.min(14, Number(settings.segments) || 1));
+    if (settings.symmetryVersion === 2) {
+      return radialCopyTransforms(count, settings.mirror, settings.mirrorAxis || 0).map(({ a, b, c, d }) => {
+        const transform = (point) => {
+          const x = point.x - center.x, y = point.y - center.y;
+          return { x: center.x + a * x + c * y, y: center.y + b * x + d * y };
+        };
+        const forceX = splat.force?.x || 0, forceY = -(splat.force?.y || 0);
+        return { ...splat, fromUv: this.pointToCanopyUV(transform(start), diameter),
+          uv: this.pointToCanopyUV(transform(end), diameter),
+          force: { x: a * forceX + c * forceY, y: -(b * forceX + d * forceY) } };
+      });
+    }
     const mirrorCount = count > 1 && settings.mirror ? 2 : 1;
     const copies = [];
     for (let index = 0; index < count; index += 1) {

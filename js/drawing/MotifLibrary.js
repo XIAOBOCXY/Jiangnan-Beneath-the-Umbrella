@@ -9,7 +9,7 @@ export const MOTIF_FORMATS = Object.freeze([
 export const MOTIF_CATEGORIES = Object.freeze([
   Object.freeze({ id: "subject", name: "湖山景致", tabName: "山水" }),
   Object.freeze({ id: "flora", name: "花卉植物", tabName: "花卉" }),
-  Object.freeze({ id: "jiangnan", name: "江南风物", tabName: "江南" }),
+  Object.freeze({ id: "jiangnan", name: "飞鸟蝶影", tabName: "鸟蝶" }),
   Object.freeze({ id: "drama", name: "戏曲人物", tabName: "戏曲" }),
   Object.freeze({ id: "ornament", name: "传统纹饰", tabName: "纹饰" }),
   Object.freeze({ id: "edge", name: "伞缘边饰", tabName: "伞缘" }),
@@ -66,10 +66,8 @@ const paintedCollection = [
   sourceLinks: officialSources
 }));
 
-// Extra category-ready selections reuse the existing digitally restored,
-// pigment-textured artwork at different scale/repeat defaults. This makes
-// useful Jiangnan, ornament and border choices available without flattening
-// or recoloring the painted source.
+// Older category variants reuse the same images. Keep their IDs resolvable for
+// saved artworks, but don't offer duplicate image choices in new work.
 const supplementalPaintedCollection = [
   ["jiangnan-blue-lake", "月映湖山·江南景", "jiangnan", "蓝色远山与月影相映，湖面层层晕开。", "blue-lake.webp", 230, 1],
   ["jiangnan-willow-boat", "柳岸归舟·江南景", "jiangnan", "垂柳掩映一叶小舟，湖水与远岸在轻雾中展开。", "willow-boat.webp", 230, 1],
@@ -86,6 +84,7 @@ const supplementalPaintedCollection = [
   id: `painted-${id}`, name, categoryId,
   src: `../../assets/patterns/painted-collection/${file}`, format: "image/webp",
   recommendedSize, defaultRepeatCount, defaultPlacement: "single",
+  legacy: true,
   applicableZones: ["伞心", "中部", "外圈", "伞缘"], role: "彩绘纹样",
   status: "generated-painted-study", description: meaning, meaning,
   knowledge: "花鸟、山水和戏曲是西湖绸伞常见的装饰题材。",
@@ -247,7 +246,7 @@ export const MOTIF_LIBRARY = Object.freeze([
   freezeAsset({
     id: "blue-bird",
     name: "青羽飞鸟",
-    categoryId: "flora",
+    categoryId: "jiangnan",
     src: "../../assets/patterns/silk-studies/blue-bird.png",
     format: "image/png",
     recommendedSize: 155,
@@ -363,7 +362,6 @@ export const MOTIF_LIBRARY = Object.freeze([
     categoryId: "ornament",
     src: "../../assets/patterns/restored/cloud-scroll.png",
     format: "image/png",
-    legacy: true,
     recommendedSize: 112,
     defaultRepeatCount: 12,
     defaultPlacement: "single",

@@ -149,10 +149,9 @@ export class CanvasManager {
     }
 
     const rect = stage.getBoundingClientRect();
-    const verticalSpan = this.viewZoom * (
-      Math.abs(Math.cos(this.viewRotation)) * rect.height
-      + Math.abs(Math.sin(this.viewRotation)) * rect.width
-    );
+    // The artwork is circular, so rotating it does not increase its visible
+    // height. Reserve space for zoom only, keeping the controls stationary.
+    const verticalSpan = this.viewZoom * Math.max(rect.width, rect.height);
     const extra = Math.max(0, (verticalSpan - rect.height) * 0.5);
     // Symmetric reserve prevents the stage center from drifting with panY.
     stage.style.setProperty("--zoom-reserve-top", `${extra}px`);

@@ -1,3 +1,5 @@
+import { radialCopyTransforms } from "./RadialSymmetry.js?v=20261112-symmetry-v1";
+
 // MandalaRenderer 同时渲染平滑的放射笔迹和独立可编辑的纹样对象。
 import { ArtworkDocument } from "./ArtworkDocument.js?v=20261111-inspiration-batch-v2";
 import { CompositionZones } from "./CompositionZones.js";
@@ -553,12 +555,17 @@ export class MandalaRenderer {
     const washProgress = wash ? Math.min(1, (performance.now() - wash.startedAt) / wash.duration) : 1;
     ctx.save();
     ctx.beginPath(); ctx.arc(center.x, center.y, this.canvasManager.radius - 1, 0, Math.PI * 2); ctx.clip();
-    for (let index = 0; index < count; index += 1) {
-      for (let mirror = 0; mirror < mirrorCount; mirror += 1) {
+    const transforms = settings.symmetryVersion === 2
+      ? radialCopyTransforms(count, settings.mirror, settings.mirrorAxis || 0)
+      : Array.from({ length: count }, (_, index) => Array.from({ length: mirrorCount }, (_, mirror) => {
+          const angle = index * Math.PI * 2 / count;
+          const cosine = Math.cos(angle), sine = Math.sin(angle);
+          return mirror ? { a: cosine, b: sine, c: sine, d: -cosine } : { a: cosine, b: sine, c: -sine, d: cosine };
+        })).flat();
+    for (const transform of transforms) {
         ctx.save();
         ctx.translate(center.x, center.y);
-        ctx.rotate(index * Math.PI * 2 / count);
-        if (mirror) ctx.scale(1, -1);
+        ctx.transform(transform.a, transform.b, transform.c, transform.d, 0, 0);
         ctx.translate(-center.x, -center.y);
         if (washProgress < 1) {
           const washOpacity = (1 - washProgress) * .14;
@@ -571,7 +578,6 @@ export class MandalaRenderer {
         }
         this.drawSmoothPath(ctx, stroke.points, settings);
         ctx.restore();
-      }
     }
     ctx.restore();
   }

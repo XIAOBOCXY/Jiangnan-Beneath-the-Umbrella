@@ -16,7 +16,7 @@
   </script>
   <link rel="preload" href="assets/fonts/AlimamaDaoLiTi-full.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="assets/fonts/ChillHuoKai-site.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=20261111-all-pages-scale-v3">
+  <link rel="stylesheet" href="styles.css?v=20261112-book-gallery-v1">
 </head>
 <body>
   <div class="paper-grain" aria-hidden="true"></div>
@@ -286,9 +286,9 @@
     <main class="hanging-gallery" id="hangingGallery" aria-label="悬挂绸伞展廊">
       <div class="hanging-gallery-scene" id="hangingGalleryScene">
         <div class="hanging-gallery-three" id="hangingGallery3D" aria-label="随风轻摆的三维悬挂绸伞与江南街景">
-          <p class="hanging-gallery-loading" role="status">正在布置悬伞街景…</p>
         </div>
       </div>
+      <p class="hanging-gallery-loading" role="status">正在布置悬伞街景…</p>
       <nav class="page-nav heritage-page-nav hanging-gallery-nav" aria-label="页面导航">
         <a href="#home" data-route="home"><span>首页</span></a>
         <a href="#heritage" data-route="heritage"><span>非遗文化</span></a>
@@ -310,12 +310,14 @@
         <div class="hanging-gallery-track" id="hangingGalleryTrack" tabindex="0"></div>
         <button type="button" class="hanging-gallery-arrow" id="hangingGalleryNext" aria-label="向右浏览作品">›</button>
       </div>
+      <p class="hanging-touch-hint" aria-hidden="true">上下滑动前进或后退 · 左右滑动转向<br>双指滑动调整视角</p>
       <div class="hanging-gallery-empty" id="hangingGalleryEmpty" hidden>
         <p>还没有保存的绸伞</p>
         <button type="button" id="hangingGalleryCreate">去绘制一把</button>
       </div>
     </main>
     <section class="gallery-focus" id="galleryFocus" hidden aria-label="独立绸伞欣赏">
+      <button type="button" class="gallery-focus-close" id="galleryFocusClose" aria-label="返回悬伞画廊">×</button>
       <div class="gallery-focus-fog" aria-hidden="true"></div><div class="gallery-focus-host showcase-canvas-host" id="galleryFocusHost"></div>
     </section>
   </section>
@@ -434,7 +436,7 @@
             <output class="segment-value" id="segmentsValue">8 重</output>
           </div>
           <div class="control-item compact-item studio-mirror-row">
-            <label class="check-row" for="mirror"><span>镜像</span><input type="checkbox" id="mirror" role="switch" aria-checked="true" checked></label>
+            <label class="check-row" for="mirror" title="相邻重复笔迹交替镜像翻转，数量保持不变"><span>镜像（交替翻转）</span><input type="checkbox" id="mirror" role="switch" aria-checked="true" checked></label>
           </div>
         </section>
 
@@ -495,6 +497,6 @@
   <div class="ink-transition" id="inkTransition" aria-hidden="true">
     <div class="ink-transition-canvas-host" id="inkTransitionCanvas"></div>
   </div>
-  <script type="module" src="js/main.js?v=20261111-responsive-scale-v1"></script>
+  <script type="module" src="js/main.js?v=20261112-book-gallery-v1"></script>
 </body>
 </html>

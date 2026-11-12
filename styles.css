@@ -11411,3 +11411,278 @@ html[data-site-page="studio"] .studio-page .control-panel { -webkit-backdrop-fil
   .studio-page .audio-reactive-button,
   .studio-page .studio-save-button { width: auto; min-width: 0; }
 }
+
+/* The phone tool scroll stays in reach and unfolds upward from the bottom. */
+.hanging-touch-hint { display: none; }
+@media (max-width: 680px), (max-width: 980px) and (pointer: coarse) {
+  .studio-page .main-content { padding-bottom: calc(4rem + env(safe-area-inset-bottom)); }
+  .studio-page .studio-scroll {
+    position: fixed !important;
+    z-index: 25;
+    inset: auto .5rem max(.35rem, env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    height: min(31rem, calc(100dvh - 5rem)) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 5rem);
+    margin: 0 !important;
+    overflow: hidden !important;
+    transition: height .45s cubic-bezier(.2,.72,.18,1) !important;
+  }
+  .studio-page.is-panel-collapsed .studio-scroll { height: 3.2rem !important; }
+  .studio-page .studio-scroll-sheet,
+  .studio-page.is-panel-collapsed .studio-scroll-sheet {
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    transition: none !important;
+  }
+  .studio-page .studio-scroll-paper,
+  .studio-page.is-panel-collapsed .studio-scroll-paper {
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    clip-path: none !important;
+    border-radius: .65rem .65rem 0 0 !important;
+  }
+  .studio-page .studio-scroll .controls {
+    inset: 3.2rem 0 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: .5rem .9rem 1rem !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .studio-page .studio-scroll-toggle,
+  .studio-page.is-panel-collapsed .studio-scroll-sheet > .studio-scroll-toggle {
+    inset: 0 0 auto !important;
+    width: 100% !important;
+    height: 3.2rem !important;
+    transform: none !important;
+    touch-action: manipulation;
+  }
+  .studio-page .studio-scroll-label { writing-mode: horizontal-tb !important; text-orientation: mixed !important; }
+  .studio-page .studio-scroll-curl,
+  .studio-page .studio-scroll-highlight,
+  .studio-page.is-panel-collapsed .studio-scroll-curl,
+  .studio-page.is-panel-collapsed .studio-scroll-highlight {
+    inset: 0 0 auto !important;
+    width: 100% !important;
+    height: 3.2rem !important;
+    transform: none !important;
+  }
+  .studio-page .studio-scroll-shadow { inset: 2.8rem 0 auto !important; width: 100% !important; height: .8rem !important; }
+  .hanging-gallery-three { touch-action: none; }
+  .hanging-touch-hint {
+    position: absolute;
+    z-index: 5;
+    top: calc(4.2rem + env(safe-area-inset-top));
+    left: 50%;
+    display: block;
+    width: max-content;
+    max-width: calc(100% - 1rem);
+    margin: 0;
+    padding: .38rem .7rem;
+    border-radius: .55rem;
+    background: rgba(29, 43, 37, .55);
+    color: #f4eddb;
+    font: .7rem/1.5 var(--font-body, sans-serif);
+    text-align: center;
+    pointer-events: none;
+    transform: translateX(-50%);
+  }
+  .gallery-focus .gallery-focus-close {
+    z-index: 5;
+    top: max(.7rem, env(safe-area-inset-top));
+    right: max(.7rem, env(safe-area-inset-right));
+    display: grid !important;
+    width: 2.7rem;
+    height: 2.7rem;
+    background: rgba(250, 247, 236, .85);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-page .studio-scroll { transition-duration: .01ms !important; }
+}
+
+/* Reveal the gallery only after its scene, backdrop and saved umbrellas are ready. */
+.hanging-gallery:not(.is-scene-ready) :is(.hanging-gallery-scene, .hanging-display-controls, .hanging-gallery-rail, .hanging-gallery-empty, .hanging-touch-hint) {
+  visibility: hidden !important;
+}
+.hanging-gallery .hanging-gallery-loading {
+  z-index: 12;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background: #e7e9df;
+  text-align: center;
+  transform: none;
+}
+.hanging-gallery.is-scene-ready .hanging-gallery-loading { display: none; }
+
+/* Start the umbrella's reveal as soon as its model is ready. */
+.home-page.is-entering .home-umbrella-stage {
+  animation-duration: .45s;
+  animation-delay: 0s;
+}
+
+@keyframes hanging-touch-hint-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@media (max-width: 680px), (max-width: 980px) and (pointer: coarse) {
+  /* Rotated selection handles can extend the scrollable area; reserve the
+     scrollbar gutter so that appearing scrollbars cannot resize the canvas. */
+  html[data-site-page="studio"] body { scrollbar-gutter: stable; }
+  /* Center the tool sections while keeping labels readable within each one. */
+  .studio-page .studio-scroll .controls { align-items: center !important; }
+
+  /* The desktop's painted paper roller, turned horizontally for the phone. */
+  .studio-page .studio-scroll-curl,
+  .studio-page.is-panel-collapsed .studio-scroll-curl {
+    border-radius: .42rem !important;
+    background:
+      radial-gradient(circle .44rem at .65rem 50%, #51402d 0 16%, #aa926c 20% 33%, #f1e6ce 38% 52%, #a28c68 57% 68%, transparent 72%),
+      radial-gradient(circle .44rem at calc(100% - .65rem) 50%, #51402d 0 16%, #aa926c 20% 33%, #f1e6ce 38% 52%, #a28c68 57% 68%, transparent 72%),
+      linear-gradient(180deg, rgba(71,52,33,.43), rgba(255,250,237,.1) 22%, rgba(255,250,237,.15) 60%, rgba(70,51,32,.4)),
+      url("assets/ui/studio-scroll-paper-art.png") center 68% / 100% auto no-repeat,
+      url("assets/ui/xuan-paper.svg") center / 256px 256px repeat !important;
+    box-shadow: inset 0 .16rem .24rem rgba(59,43,27,.22), inset 0 -.15rem .24rem rgba(60,44,28,.2), 0 .12rem .35rem rgba(47,35,23,.2) !important;
+  }
+  .studio-page .studio-scroll-curl::before {
+    background: linear-gradient(180deg, rgba(56,43,29,.16), transparent 22%, rgba(255,251,239,.4) 43%, transparent 80%, rgba(57,42,27,.16)) !important;
+  }
+  .studio-page .studio-scroll-highlight {
+    border-radius: .42rem !important;
+    background: linear-gradient(180deg, transparent 10%, rgba(255,251,239,.3) 35%, transparent 68%) !important;
+  }
+  .studio-page .studio-scroll-toggle,
+  .studio-page.is-panel-collapsed .studio-scroll-sheet > .studio-scroll-toggle { border-radius: .42rem !important; }
+
+  .hanging-gallery .hanging-display-controls {
+    top: max(.45rem, env(safe-area-inset-top));
+    left: max(.35rem, env(safe-area-inset-left));
+    gap: .16rem;
+  }
+  .hanging-gallery .hanging-display-controls :is(.hanging-weather-controls, .hanging-time-controls) {
+    gap: .04rem;
+    padding: .1rem;
+  }
+  .hanging-gallery .hanging-display-controls :is(.hanging-weather-controls, .hanging-time-controls) > button {
+    flex-basis: 1.35rem;
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+  .hanging-gallery .hanging-display-controls :is(.hanging-weather-controls, .hanging-time-controls) > button svg {
+    width: .82rem;
+    height: .82rem;
+  }
+  .hanging-gallery .hanging-gallery-nav { gap: .25rem !important; }
+  .hanging-gallery .hanging-gallery-nav > :is(a, button) {
+    min-width: 0 !important;
+    padding-inline: .3rem !important;
+    font-size: .8rem !important;
+    letter-spacing: 0 !important;
+  }
+  .hanging-gallery.is-scene-ready .hanging-touch-hint {
+    animation: hanging-touch-hint-fade .9s ease 30s forwards;
+  }
+}
+
+@media (max-width: 360px) {
+  .hanging-gallery .hanging-gallery-nav { gap: .18rem !important; }
+  .hanging-gallery .hanging-gallery-nav > :is(a, button) {
+    padding-inline: .18rem !important;
+    font-size: .72rem !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hanging-gallery.is-scene-ready .hanging-touch-hint { animation-duration: .01ms; }
+}
+
+/* On compact touch screens, read one leaf at a time at full width. */
+@media (max-width: 680px), (max-width: 980px) and (pointer: coarse) {
+  .heritage-page { min-height: 0 !important; }
+  .heritage-page .heritage-kiosk { width: 100% !important; min-width: 0 !important; }
+  .heritage-page .heritage-book-layout {
+    top: 0 !important;
+    width: calc(100% - 3.1rem) !important;
+    height: calc(100dvh - 5.25rem) !important;
+    max-height: none !important;
+    min-width: 0 !important;
+    aspect-ratio: auto !important;
+    transform: none !important;
+  }
+  .heritage-page .heritage-book::before { display: none !important; }
+  .heritage-page .heritage-spread:not([hidden]) {
+    display: block !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding-bottom: 3rem;
+  }
+  .heritage-page .heritage-spread > .heritage-leaf {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 1.6rem 1.4rem !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  .heritage-page .heritage-spread > .heritage-leaf.is-mobile-hidden { display: none !important; }
+  .heritage-page .heritage-tabs-left { display: none !important; }
+  .heritage-page .heritage-cover-page h1 { font-size: 2.15rem !important; }
+  .heritage-page .heritage-page-content h2 { font-size: 1.35rem !important; line-height: 1.4 !important; }
+  .heritage-page .heritage-cover-page > p:not(.heritage-kicker),
+  .heritage-page .heritage-page-content p:not(.heritage-kicker) { font-size: .96rem !important; line-height: 1.8 !important; }
+  .heritage-page .heritage-kicker { font-size: .76rem !important; }
+  .heritage-page .heritage-cover-photo,
+  .heritage-page .heritage-display-photo { display: block; height: auto !important; max-height: none !important; margin-top: .8rem; }
+  .heritage-page .heritage-photo img { height: auto !important; max-height: 19rem; object-fit: contain; }
+  .heritage-page .heritage-photo figcaption { font-size: .75rem !important; }
+  .heritage-page .heritage-tabs { max-height: 100%; overflow-y: auto; }
+  .heritage-page .heritage-page-tab { display: none !important; }
+  .heritage-page .heritage-page-corner:not(:disabled) {
+    opacity: 1 !important;
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    bottom: .4rem !important;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(247,242,231,.9);
+    color: #435c50;
+    box-shadow: 0 1px 6px rgba(55,50,39,.16);
+  }
+  .heritage-page .heritage-page-corner-previous::after { content: '‹'; font: 2rem/1 serif; }
+  .heritage-page .heritage-page-corner-next::after { content: '›'; font: 2rem/1 serif; }
+}
+
+/* Keep the phone gallery's controls on the navigation baseline. Tapping the
+   empty area of a focused umbrella remains the way back to the gallery. */
+@media (max-width: 680px), (max-width: 980px) and (pointer: coarse) {
+  .hanging-gallery .hanging-gallery-nav { top: max(.5rem, env(safe-area-inset-top)) !important; }
+  .hanging-gallery .hanging-display-controls { top: calc(max(.5rem, env(safe-area-inset-top)) + .6rem) !important; }
+  .gallery-focus .gallery-focus-close { display: none !important; }
+}
+
+/* A static wash avoids an opaque WebGL iframe veiling the book on iOS. */
+html.heritage-static-background .heritage-ink-host { display: none !important; }
+html.heritage-static-background .heritage-page {
+  background:
+    radial-gradient(ellipse at 16% 68%, rgba(111, 131, 117, .18), transparent 53%),
+    radial-gradient(ellipse at 85% 24%, rgba(153, 139, 113, .16), transparent 50%),
+    #e7dfcd !important;
+}
+html.heritage-static-background .heritage-page .heritage-leaf,
+html.heritage-static-background .heritage-page .heritage-leaf :where(p, blockquote, figcaption, small) {
+  color: #34483d;
+}
