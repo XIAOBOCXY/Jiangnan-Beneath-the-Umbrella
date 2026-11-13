@@ -16,7 +16,7 @@
   </script>
   <link rel="preload" href="assets/fonts/AlimamaDaoLiTi-full.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="assets/fonts/ChillHuoKai-site.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=20261112-brush-selection-v1">
+  <link rel="stylesheet" href="styles.css?v=20261113-westlake-v2">
 </head>
 <body>
   <div class="paper-grain" aria-hidden="true"></div>
@@ -75,6 +75,7 @@
       <path d="M-30 483 C150 446 267 462 407 480 C563 500 646 478 799 469 C958 459 1070 477 1212 486 C1376 496 1481 465 1630 462 L1630 550 C1453 550 1355 532 1195 539 C1049 545 953 522 799 530 C637 538 545 557 397 538 C245 519 139 524 -30 558 Z" fill="url(#lakeMist)" />
     </g>
   </svg>
+  <div class="home-landscape-background" aria-hidden="true"></div>
   <div id="homeLakeHost" aria-hidden="true"></div>
   <div class="ink-wash-background" id="inkWashCanvas" aria-hidden="true"></div>
   <main class="site-page home-page" id="homePage">
@@ -86,9 +87,9 @@
         </h1>
         <p class="home-poem"><span>以竹为骨，以绸为面。</span><span class="home-poem-lines"><span>一伞撑开江南烟雨，</span><span>一笔绘就西湖风华。</span></span></p>
         <nav class="home-actions" aria-label="探索西湖绸伞">
-          <a class="home-action home-action-primary" href="#studio" data-route="studio">绘制绸伞</a>
-          <a class="home-action" href="#heritage" data-route="heritage">了解文化</a>
-          <a class="home-action" href="#gallery" data-route="gallery">悬伞画廊</a>
+          <a class="home-action home-action-primary" href="#studio" data-route="studio"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 13c1.5-6.8 8-10 13-10s11.5 3.2 13 10c-2-1.3-4-1.3-6 0-2-1.3-4-1.3-7 0-3-1.3-5-1.3-7 0-2-1.3-4-1.3-6 0ZM16 3v21c0 4 5 4 5 1M9 13c1-5 3.5-8.7 7-10m7 10c-1-5-3.5-8.7-7-10"/></svg><span>绘制绸伞</span></a>
+          <a class="home-action" href="#heritage" data-route="heritage"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 8c-4-3-8-3.4-12-2v19c4-1.3 8-1 12 2 4-3 8-3.3 12-2V6c-4-1.4-8-1-12 2Zm0 0v19M7 10c2.5-.4 4.4 0 6 1M7 14c2.5-.4 4.4 0 6 1m6-4c1.6-1 3.5-1.4 6-1m-6 5c1.6-1 3.5-1.4 6-1"/></svg><span>了解文化</span></a>
+          <a class="home-action" href="#gallery" data-route="gallery"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 25h26M6 25V13h20v12M4 13h24L16 5 4 13Zm7 12v-8h10v8M3 28h26M16 3v2"/><path d="M9 13v12m14-12v12"/></svg><span>悬伞画廊</span></a>
         </nav>
       </section>
       <div class="home-umbrella-stage" aria-label="可拖动欣赏的西湖绸伞">
@@ -368,6 +369,7 @@
             <button type="button" class="view-button is-active" data-view-mode="2d" aria-pressed="true">2D 绘制</button>
             <button type="button" class="view-button" data-view-mode="3d" aria-pressed="false">3D 赏伞</button>
           </div>
+          <button class="viewer-button studio-ink-toggle" id="studioInkToggle" type="button" aria-pressed="true" title="关闭流动水墨并显示山水背景"><span>流动水墨</span><i aria-hidden="true"></i></button>
           <button class="viewer-button audio-reactive-button" id="audioReactiveBtn" type="button" aria-pressed="false" title="点击开启内置音乐与绸面声光响应" hidden>
             <span class="audio-button-label">声光响应</span>
             <span class="audio-meter" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
@@ -497,6 +499,6 @@
   <div class="ink-transition" id="inkTransition" aria-hidden="true">
     <div class="ink-transition-canvas-host" id="inkTransitionCanvas"></div>
   </div>
-  <script type="module" src="js/main.js?v=20261112-artwork-order-v1"></script>
+  <script type="module" src="js/main.js?v=20261113-westlake-v1"></script>
 </body>
 </html>

@@ -10,6 +10,7 @@ export class InkWashBackground {
     if (!hostMap?.studio || !hostMap?.heritage) return;
     this.hosts = hostMap;
     this.mode = "off";
+    this.studioEnabled = true;
     // iOS WebKit can composite a transparent WebGL iframe as a white veil.
     // Keep the book readable and use its static paper/ink background there.
     this.staticHeritage = /iPad|iPhone|iPod/i.test(navigator.userAgent)
@@ -49,7 +50,7 @@ export class InkWashBackground {
     frame.loading = "eager";
     frame.src = src;
     frame.addEventListener("load", () => {
-      this.send(route, { type: "background-enabled", enabled: this.mode === route && !document.hidden && !this.transitionPaused });
+      this.send(route, { type: "background-enabled", enabled: this.isFrameEnabled(route) });
     });
     this.frames.set(route, frame);
     host.append(frame);
@@ -59,11 +60,20 @@ export class InkWashBackground {
     this.frames.get(route)?.contentWindow?.postMessage(message, location.origin);
   }
 
+  isFrameEnabled(route) {
+    return route === this.mode && !document.hidden && !this.transitionPaused && (route !== "studio" || this.studioEnabled);
+  }
+
+  setStudioEnabled(enabled) {
+    this.studioEnabled = Boolean(enabled);
+    this.syncFrames();
+  }
+
   syncFrames() {
     for (const [route, frame] of this.frames) {
-      const visible = route === this.mode && !document.hidden;
+      const visible = route === this.mode && !document.hidden && (route !== "studio" || this.studioEnabled);
       frame.classList.toggle("is-active", visible);
-      this.send(route, { type: "background-enabled", enabled: visible && !this.transitionPaused });
+      this.send(route, { type: "background-enabled", enabled: this.isFrameEnabled(route) });
     }
   }
 

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { CanvasManager } from "../core/CanvasManager.js?v=20261112-artwork-order-v1";
+import { CanvasManager } from "../core/CanvasManager.js?v=20261113-westlake-v1";
 import { MandalaRenderer } from "../core/MandalaRenderer.js?v=20261112-artwork-order-v1";
 import { InkArtworkLayers } from "../core/InkArtworkLayers.js?v=20261112-artwork-order-v1";
 import { radialCopyTransforms } from "../core/RadialSymmetry.js?v=20261112-symmetry-v1";

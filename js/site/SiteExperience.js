@@ -28,6 +28,7 @@ export class SiteExperience {
     this.homeWorkId = null;
     this.homeIntroPlayed = false;
     this.transition = inkTransition;
+    this.bindStudioBackground();
     this.bindHomeInteractions();
     this.bindHeritageBook();
     this.bindNavigation();
@@ -85,6 +86,25 @@ export class SiteExperience {
       if (event.key === "Escape" && !document.getElementById("galleryFocus").hidden) this.closeGalleryFocus();
     });
     this.showPage(this.routeFromHash(), false);
+  }
+
+  bindStudioBackground() {
+    const button = document.getElementById("studioInkToggle");
+    if (!button) return;
+    let enabled = true;
+    try { enabled = localStorage.getItem("jiangnan-studio-ink-enabled") !== "false"; } catch (_) {}
+    const apply = () => {
+      button.setAttribute("aria-pressed", String(enabled));
+      button.title = enabled ? "关闭流动水墨并显示山水背景" : "开启流动水墨背景";
+      document.documentElement.dataset.studioBackground = enabled ? "ink" : "landscape";
+      this.inkWashBackground?.setStudioEnabled(enabled);
+    };
+    button.addEventListener("click", () => {
+      enabled = !enabled;
+      try { localStorage.setItem("jiangnan-studio-ink-enabled", String(enabled)); } catch (_) {}
+      apply();
+    });
+    apply();
   }
 
   bindHomeInteractions() {

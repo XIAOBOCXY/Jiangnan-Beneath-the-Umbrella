@@ -254,11 +254,19 @@ export class CanvasManager {
 
   drawPanelLight(ctx) {
     ctx.save(); ctx.beginPath(); ctx.arc(CENTER, CENTER, CANOPY_RADIUS - 8, 0, Math.PI * 2); ctx.clip();
+    // A neutral broad highlight and soft rim give the editable 2D silk a
+    // rounded canopy without adding yellow to the selected fabric colour.
+    const dome = ctx.createRadialGradient(CENTER - 52, CENTER - 65, 12, CENTER, CENTER, CANOPY_RADIUS);
+    dome.addColorStop(0, "rgba(255,255,255,.14)");
+    dome.addColorStop(.48, "rgba(255,255,255,.055)");
+    dome.addColorStop(.78, "rgba(255,255,255,0)");
+    dome.addColorStop(1, "rgba(35,45,42,.09)");
+    ctx.fillStyle = dome; ctx.fillRect(0, 0, SIZE, SIZE);
     for (let panel = 0; panel < RIB_COUNT; panel += 1) {
       const angle = Math.PI * 2 / RIB_COUNT;
       ctx.beginPath(); ctx.moveTo(CENTER, CENTER);
       ctx.arc(CENTER, CENTER, CANOPY_RADIUS, -Math.PI / 2 + panel * angle, -Math.PI / 2 + (panel + 1) * angle);
-      ctx.closePath(); ctx.fillStyle = panel % 2 ? "rgba(83,83,83,.024)" : "rgba(255,255,255,.012)"; ctx.fill();
+      ctx.closePath(); ctx.fillStyle = panel % 2 ? "rgba(65,65,65,.035)" : "rgba(255,255,255,.026)"; ctx.fill();
     }
     ctx.restore();
   }
@@ -471,21 +479,35 @@ export class CanvasManager {
       const startY = CENTER + Math.sin(angle) * 15;
       const normalX = -Math.sin(angle), normalY = Math.cos(angle);
       ctx.lineCap = "round";
+      // Fine shadow, bamboo body and highlight form a rounded rib rather than
+      // a flat line. The geometry stays aligned with the 36-rib 3D model.
+      ctx.beginPath(); ctx.moveTo(startX + normalX * 1.2, startY + normalY * 1.2);
+      ctx.lineTo(endX + normalX * 1.2, endY + normalY * 1.2);
+      ctx.lineWidth = 2.3; ctx.strokeStyle = "rgba(53,48,39,.14)"; ctx.stroke();
       ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY);
-      ctx.lineWidth = 1.1; ctx.strokeStyle = "rgba(91,67,44,.26)"; ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(startX + normalX * .65, startY + normalY * .65);
-      ctx.lineTo(endX + normalX * .65, endY + normalY * .65);
-      ctx.lineWidth = .45; ctx.strokeStyle = "rgba(255,238,202,.42)"; ctx.stroke();
+      ctx.lineWidth = 1.65; ctx.strokeStyle = "rgba(145,112,70,.64)"; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(startX - normalX * .4, startY - normalY * .4);
+      ctx.lineTo(endX - normalX * .4, endY - normalY * .4);
+      ctx.lineWidth = .65; ctx.strokeStyle = "rgba(255,240,205,.83)"; ctx.stroke();
+      ctx.beginPath(); ctx.arc(endX, endY, 1.55, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(157,119,72,.72)"; ctx.fill();
     }
   }
 
   drawUmbrellaHub(ctx) {
-    ctx.save(); const wood = ctx.createRadialGradient(CENTER - 3, CENTER - 4, 1, CENTER, CENTER, 15);
-    wood.addColorStop(0, "#f0d69f"); wood.addColorStop(.55, "#b88a55"); wood.addColorStop(1, "#765638");
-    ctx.beginPath(); ctx.arc(CENTER, CENTER, 15, 0, Math.PI * 2); ctx.fillStyle = wood; ctx.fill();
-    ctx.strokeStyle = "rgba(94,64,39,.72)"; ctx.lineWidth = 1.1; ctx.stroke();
-    ctx.beginPath(); ctx.arc(CENTER, CENTER, 10.5, 0, Math.PI * 2); ctx.strokeStyle = "rgba(255,240,204,.72)"; ctx.lineWidth = .8; ctx.stroke();
-    ctx.beginPath(); ctx.arc(CENTER, CENTER, 5, 0, Math.PI * 2); ctx.fillStyle = "#815d3c"; ctx.fill();
+    ctx.save();
+    ctx.shadowColor = "rgba(51,42,31,.28)"; ctx.shadowBlur = 5; ctx.shadowOffsetY = 2;
+    const wood = ctx.createRadialGradient(CENTER - 4, CENTER - 5, 1, CENTER, CENTER, 18);
+    wood.addColorStop(0, "#f9e9c5"); wood.addColorStop(.42, "#d7b886"); wood.addColorStop(.78, "#b18b5e"); wood.addColorStop(1, "#806344");
+    ctx.beginPath(); ctx.arc(CENTER, CENTER, 17, 0, Math.PI * 2); ctx.fillStyle = wood; ctx.fill();
+    ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.strokeStyle = "rgba(100,76,49,.72)"; ctx.lineWidth = 1; ctx.stroke();
+    for (const radius of [13, 9, 5]) {
+      ctx.beginPath(); ctx.arc(CENTER, CENTER, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = radius === 9 ? "rgba(113,83,49,.48)" : "rgba(255,245,218,.72)";
+      ctx.lineWidth = .9; ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(CENTER, CENTER, 3, 0, Math.PI * 2); ctx.fillStyle = "#896746"; ctx.fill();
     ctx.restore();
   }
 

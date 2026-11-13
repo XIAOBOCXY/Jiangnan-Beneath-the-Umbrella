@@ -42,7 +42,7 @@ const FRAGMENT_SHADER = `
   }
   void main() {
     if (uStage > 0.5 && uStage < 1.5) {
-      gl_FragColor = vec4(0.012, 0.021, 0.017, 1.0);
+      gl_FragColor = vec4(0.23, 0.25, 0.23, 1.0);
       return;
     }
 
@@ -53,7 +53,7 @@ const FRAGMENT_SHADER = `
     // Most of the screen is either clear or fully covered. Avoid running the
     // turbulence calculation there, especially on lower-powered devices.
     if (distanceToFront > 0.16) {
-      gl_FragColor = vec4(0.012, 0.021, 0.017, 1.0);
+      gl_FragColor = vec4(0.23, 0.25, 0.23, 1.0);
       return;
     }
     if (distanceToFront < -0.16) {
@@ -72,7 +72,7 @@ const FRAGMENT_SHADER = `
       * smoothstep(0.2, 0.8, noise(vec2(vUv.y * 110.0, 4.6))) * 0.22;
     float alpha = mix(max(body * 0.96, bristle), 1.0, depth);
     float wetRim = (1.0 - smoothstep(0.0, 0.11, abs(edge))) * 0.45;
-    vec3 ink = mix(vec3(0.012, 0.021, 0.017), vec3(0.075, 0.105, 0.09), wetRim);
+    vec3 ink = mix(vec3(0.23, 0.25, 0.23), vec3(0.36, 0.39, 0.36), wetRim);
     gl_FragColor = vec4(ink, clamp(alpha, 0.0, 1.0));
   }
 `;
